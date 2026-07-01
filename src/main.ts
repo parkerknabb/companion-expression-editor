@@ -85,15 +85,16 @@ workspace.addChangeListener((event) => {
 })
 
 importExpression.addEventListener('click', () => {
-  try {
-    const program = parseExpressionProgram(expressionOutput.value)
-    loadProgramIntoWorkspace(workspace, program)
-    syncExpression('Imported expression.')
-    saveWorkspace()
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unable to import expression.'
-    setStatus(message, 'error')
-  }
+  importExpressionText()
+})
+
+expressionOutput.addEventListener('paste', (event) => {
+  const pastedText = event.clipboardData?.getData('text')
+  if (!pastedText) return
+
+  event.preventDefault()
+  expressionOutput.value = pastedText
+  importExpressionText()
 })
 
 copyExpression.addEventListener('click', async () => {
@@ -123,6 +124,18 @@ function syncExpression(status = 'Workspace saved locally.'): void {
     setStatus(status, 'ok')
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to generate expression.'
+    setStatus(message, 'error')
+  }
+}
+
+function importExpressionText(): void {
+  try {
+    const program = parseExpressionProgram(expressionOutput.value)
+    loadProgramIntoWorkspace(workspace, program)
+    syncExpression('Imported expression.')
+    saveWorkspace()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to import expression.'
     setStatus(message, 'error')
   }
 }

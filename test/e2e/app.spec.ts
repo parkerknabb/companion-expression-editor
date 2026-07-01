@@ -16,6 +16,23 @@ test('imports an expression and restores it after refresh', async ({ page }) => 
   await expect(output).toHaveValue(expression)
 })
 
+test('auto-imports pasted expressions', async ({ page, browserName }) => {
+  await page.goto('/')
+
+  const expression = '$(custom:state) == "on" ? concat("A", $(internal:time_hms)) : "off"'
+  const output = page.getByRole('textbox', { name: 'Expression' })
+
+  if (browserName === 'chromium') {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  }
+  await page.evaluate((text) => navigator.clipboard.writeText(text), expression)
+  await output.click()
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V')
+
+  await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
+  await expect(output).toHaveValue(expression)
+})
+
 test('imports variadic function calls', async ({ page }) => {
   await page.goto('/')
 

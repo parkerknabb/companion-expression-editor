@@ -229,6 +229,7 @@ function defineVariadicFunctionBlock(definition: FunctionDefinition): void {
       this.itemCount_ = definition.minArgs
       this.setOutput(true, expressionCheck)
       this.setColour(120)
+      this.setInputsInline(false)
       this.setTooltip(`${definition.label}(${definition.argLabels.join(', ')}, ...)`)
       this.updateShape_ = () => updateVariadicShape(this, definition)
       this.updateShape_()
@@ -256,16 +257,31 @@ function defineVariadicFunctionBlock(definition: FunctionDefinition): void {
 }
 
 function updateVariadicShape(block: Blockly.Block & { itemCount_: number }, definition: FunctionDefinition): void {
-  for (let index = 0; index < block.itemCount_; index += 1) {
-    if (block.getInput(`ARG${index}`)) continue
-
-    const label = index === 0 ? definition.label : variadicArgLabel(definition, index)
-    block.appendValueInput(`ARG${index}`).setCheck(expressionCheck).setAlign(Blockly.inputs.Align.RIGHT).appendField(label)
+  if (!block.getInput('FUNCTION_LABEL')) {
+    block.appendDummyInput('FUNCTION_LABEL').appendField(definition.label)
   }
+
+  for (let index = 0; index < block.itemCount_; index += 1) {
+    const existingInput = block.getInput(`ARG${index}`)
+    if (existingInput) {
+      clearInputFields(existingInput)
+      existingInput.setAlign(Blockly.inputs.Align.LEFT)
+      continue
+    }
+
+    block.appendValueInput(`ARG${index}`).setCheck(expressionCheck).setAlign(Blockly.inputs.Align.LEFT)
+  }
+
+  block.moveInputBefore('FUNCTION_LABEL', block.getInput('ARG0') ? 'ARG0' : null)
 
   for (let index = block.itemCount_; block.getInput(`ARG${index}`); index += 1) {
     block.removeInput(`ARG${index}`)
   }
+}
+
+function clearInputFields(input: Blockly.Input): void {
+  input.fieldRow.forEach((field) => field.dispose())
+  input.fieldRow.length = 0
 }
 
 function getDesiredVariadicInputCount(block: Blockly.Block & { itemCount_: number }, minArgs: number): number {
@@ -275,10 +291,6 @@ function getDesiredVariadicInputCount(block: Blockly.Block & { itemCount_: numbe
   }
 
   return Math.max(minArgs, highestFilled + 2)
-}
-
-function variadicArgLabel(definition: FunctionDefinition, index: number): string {
-  return definition.argLabels[index] ?? `value ${index + 1}`
 }
 
 function functionToolboxContents(): object[] {
