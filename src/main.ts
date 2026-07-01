@@ -1,5 +1,6 @@
 import * as Blockly from 'blockly/core'
 import 'blockly/blocks'
+import * as En from 'blockly/msg/en'
 import { defineCompanionBlocks, toolbox } from './blockly/blocks'
 import {
   ensureDefaultWorkspace,
@@ -15,6 +16,7 @@ import './style.css'
 const storageKey = 'companion-expression-editor.workspace.v1'
 
 defineCompanionBlocks()
+Blockly.setLocale(blocklyLocale(En))
 
 const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('App root is missing.')
@@ -148,4 +150,8 @@ function requiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector)
   if (!element) throw new Error(`Missing element ${selector}`)
   return element
+}
+
+function blocklyLocale(locale: Record<string, unknown>): Record<string, string> {
+  return Object.fromEntries(Object.entries(locale).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
 }

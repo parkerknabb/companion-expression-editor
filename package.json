@@ -11,7 +11,7 @@
     "test:browser": "playwright test"
   },
   "dependencies": {
-    "blockly": "^12.3.1",
+    "blockly": "^13.1.0",
     "jsep": "^1.4.0"
   },
   "devDependencies": {

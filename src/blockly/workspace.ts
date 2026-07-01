@@ -39,9 +39,16 @@ export function loadProgramIntoWorkspace(workspace: Blockly.WorkspaceSvg, progra
       connectExpression(workspace, statementBlock, 'VALUE', statement)
 
       if (previous) {
-        previous.nextConnection?.connect(statementBlock.previousConnection)
+        if (!previous.nextConnection || !statementBlock.previousConnection) {
+          throw new Error('Cannot connect adjacent statement blocks.')
+        }
+        previous.nextConnection.connect(statementBlock.previousConnection)
       } else {
-        programBlock.getInput('STATEMENTS')?.connection?.connect(statementBlock.previousConnection)
+        const statementsConnection = programBlock.getInput('STATEMENTS')?.connection
+        if (!statementsConnection || !statementBlock.previousConnection) {
+          throw new Error('Cannot connect program statement block.')
+        }
+        statementsConnection.connect(statementBlock.previousConnection)
       }
       previous = statementBlock
     })

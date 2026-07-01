@@ -9,7 +9,7 @@ test('imports an expression and restores it after refresh', async ({ page }) => 
   await output.fill(expression)
   await page.getByRole('button', { name: 'Import' }).click()
 
-  await expect(page.getByRole('status')).toHaveText('Imported expression.')
+  await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
   await expect(output).toHaveValue(expression)
 
   await page.reload()
@@ -25,7 +25,7 @@ test('imports variadic function calls', async ({ page }) => {
   await output.fill(expression)
   await page.getByRole('button', { name: 'Import' }).click()
 
-  await expect(page.getByRole('status')).toHaveText('Imported expression.')
+  await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
   await expect(output).toHaveValue(expression)
 })
 
@@ -37,7 +37,7 @@ test('imports nested variables as native variables and serializes parseVariables
   await output.fill('$(custom:$(custom:b))')
   await page.getByRole('button', { name: 'Import' }).click()
 
-  await expect(page.getByRole('status')).toHaveText('Imported expression.')
+  await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
   await expect(output).toHaveValue('parseVariables("$(custom:$(custom:b))")')
 })
 
@@ -50,7 +50,7 @@ test('rejects unsupported imports without clearing the workspace', async ({ page
   await output.fill('Math.round($(internal:value))')
   await page.getByRole('button', { name: 'Import' }).click()
 
-  await expect(page.getByRole('status')).toContainText('Unsupported function')
+  await expect(page.locator('#statusMessage')).toContainText('Unsupported function')
   await expect(output).toHaveValue('Math.round($(internal:value))')
 
   await page.reload()
