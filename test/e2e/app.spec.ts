@@ -58,6 +58,19 @@ test('imports nested variables as native variables and serializes parseVariables
   await expect(output).toHaveValue('parseVariables("$(custom:$(custom:b))")')
 })
 
+test('shows escaped control characters in imported text blocks', async ({ page }) => {
+  await page.goto('/')
+
+  const output = page.getByRole('textbox', { name: 'Expression' })
+
+  await output.fill('"Line\\nTwo"')
+  await page.getByRole('button', { name: 'Import' }).click()
+
+  await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
+  await expect(page.getByText('Line\\nTwo')).toBeVisible()
+  await expect(output).toHaveValue('"Line\\nTwo"')
+})
+
 test('rejects unsupported imports without clearing the workspace', async ({ page }) => {
   await page.goto('/')
 

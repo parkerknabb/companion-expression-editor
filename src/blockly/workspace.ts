@@ -2,6 +2,7 @@ import * as Blockly from 'blockly/core'
 import type { BinaryOperator, ExpressionNode, FunctionName, ProgramNode, UnaryOperator } from '../expression/model'
 import { findFunctionDefinition, functionDefinitions } from '../expression/model'
 import { expressionCheck, functionBlockType } from './blocks'
+import { escapeStringField, unescapeStringField } from './stringField'
 
 const defaultLiteral: ExpressionNode = { type: 'Literal', value: '' }
 
@@ -84,7 +85,7 @@ function blockToExpression(block: Blockly.Block): ExpressionNode {
     case 'companion_variable':
       return { type: 'Variable', name: String(block.getFieldValue('NAME') ?? '') }
     case 'companion_string':
-      return { type: 'Literal', value: String(block.getFieldValue('VALUE') ?? '') }
+      return { type: 'Literal', value: unescapeStringField(String(block.getFieldValue('VALUE') ?? '')) }
     case 'companion_number':
       return { type: 'Literal', value: Number(block.getFieldValue('VALUE') ?? 0) }
     case 'companion_boolean':
@@ -228,7 +229,7 @@ function applyExpressionFields(block: Blockly.Block, expression: ExpressionNode)
       block.setFieldValue(expression.name, 'NAME')
       break
     case 'Literal':
-      if (typeof expression.value === 'string') block.setFieldValue(expression.value, 'VALUE')
+      if (typeof expression.value === 'string') block.setFieldValue(escapeStringField(expression.value), 'VALUE')
       if (typeof expression.value === 'number') block.setFieldValue(String(expression.value), 'VALUE')
       if (typeof expression.value === 'boolean') block.setFieldValue(String(expression.value), 'VALUE')
       break
