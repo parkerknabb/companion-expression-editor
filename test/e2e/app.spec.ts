@@ -4,22 +4,38 @@ test('imports an expression and restores it after refresh', async ({ page }) => 
   await page.goto('/')
 
   const expression = '$(custom:state) == "on" ? concat("A", $(internal:time_hms)) : "off"'
+  const formattedExpression = [
+    '$(custom:state) == "on"',
+    '  ? concat(',
+    '      "A",',
+    '      $(internal:time_hms)',
+    '    )',
+    '  : "off"',
+  ].join('\n')
   const output = page.getByRole('textbox', { name: 'Expression' })
 
   await output.fill(expression)
   await page.getByRole('button', { name: 'Import' }).click()
 
   await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
-  await expect(output).toHaveValue(expression)
+  await expect(output).toHaveValue(formattedExpression)
 
   await page.reload()
-  await expect(output).toHaveValue(expression)
+  await expect(output).toHaveValue(formattedExpression)
 })
 
 test('auto-imports pasted expressions', async ({ page, browserName }) => {
   await page.goto('/')
 
   const expression = '$(custom:state) == "on" ? concat("A", $(internal:time_hms)) : "off"'
+  const formattedExpression = [
+    '$(custom:state) == "on"',
+    '  ? concat(',
+    '      "A",',
+    '      $(internal:time_hms)',
+    '    )',
+    '  : "off"',
+  ].join('\n')
   const output = page.getByRole('textbox', { name: 'Expression' })
 
   if (browserName === 'chromium') {
@@ -30,6 +46,34 @@ test('auto-imports pasted expressions', async ({ page, browserName }) => {
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V')
 
   await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
+  await expect(output).toHaveValue(formattedExpression)
+})
+
+test('toggles expression output between pretty and compact formatting', async ({ page }) => {
+  await page.goto('/')
+
+  const expression = '$(custom:state) == "on" ? concat("A", $(internal:time_hms)) : "off"'
+  const formattedExpression = [
+    '$(custom:state) == "on"',
+    '  ? concat(',
+    '      "A",',
+    '      $(internal:time_hms)',
+    '    )',
+    '  : "off"',
+  ].join('\n')
+  const output = page.getByRole('textbox', { name: 'Expression' })
+  const prettyToggle = page.getByLabel('Pretty print')
+
+  await output.fill(expression)
+  await page.getByRole('button', { name: 'Import' }).click()
+  await expect(output).toHaveValue(formattedExpression)
+
+  await prettyToggle.uncheck()
+  await expect(page.locator('#statusMessage')).toHaveText('Compact output enabled.')
+  await expect(output).toHaveValue(expression)
+
+  await page.reload()
+  await expect(prettyToggle).not.toBeChecked()
   await expect(output).toHaveValue(expression)
 })
 

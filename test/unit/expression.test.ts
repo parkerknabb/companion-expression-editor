@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseExpressionProgram } from '../../src/expression/parse'
-import { serializeProgram } from '../../src/expression/serialize'
+import { formatProgram, serializeProgram } from '../../src/expression/serialize'
 
 describe('expression parsing and serialization', () => {
   it('round-trips Companion variables', () => {
@@ -68,5 +68,33 @@ describe('expression parsing and serialization', () => {
     const program = parseExpressionProgram('concat("a", "b", "c", "d");\nmax(1, 2, 3, 4) + min(5, 6, 7, 8)')
 
     expect(serializeProgram(program)).toBe('concat("a", "b", "c", "d");\nmax(1, 2, 3, 4) + min(5, 6, 7, 8)')
+  })
+
+  it('formats nested ternaries and concat calls with readable indentation', () => {
+    const program = parseExpressionProgram(
+      '$(custom:isDialsOnGuests) == "true" ? concat("GST 1\\n", concat(toFixed($(x32:fader_ch_09), 1), " dB")) : concat("LAV 1\\n", $(custom:audio_lav_button_held) == "true" ? concat($(sennheiser-ewdx-12:tx1_batteryGauge), "%") : concat(toFixed($(x32:fader_ch_01), 1), " dB"))',
+    )
+
+    expect(formatProgram(program)).toBe(
+      [
+        '$(custom:isDialsOnGuests) == "true"',
+        '  ? concat(',
+        '      "GST 1\\n",',
+        '      concat(toFixed($(x32:fader_ch_09), 1), " dB")',
+        '    )',
+        '  : concat(',
+        '      "LAV 1\\n",',
+        '      $(custom:audio_lav_button_held) == "true"',
+        '        ? concat(',
+        '            $(sennheiser-ewdx-12:tx1_batteryGauge),',
+        '            "%"',
+        '          )',
+        '        : concat(',
+        '            toFixed($(x32:fader_ch_01), 1),',
+        '            " dB"',
+        '          )',
+        '    )',
+      ].join('\n'),
+    )
   })
 })

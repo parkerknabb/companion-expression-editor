@@ -41,12 +41,8 @@ button:hover {
 }
 
 .topbar {
-  align-items: center;
   background: #ffffff;
   border-bottom: 1px solid #d9e2ec;
-  display: flex;
-  gap: 20px;
-  justify-content: space-between;
   padding: 14px 18px;
 }
 
@@ -89,10 +85,34 @@ button:hover {
   padding: 14px;
 }
 
+.expression-header {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto 1fr auto;
+}
+
 .panel-label {
   color: #334e68;
   font-size: 13px;
   font-weight: 700;
+}
+
+.format-toggle {
+  align-items: center;
+  color: #334e68;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  justify-self: start;
+  width: fit-content;
+}
+
+.format-toggle input {
+  accent-color: #0b7285;
+  height: 16px;
+  margin: 0;
+  width: 16px;
 }
 
 .expression-output {
@@ -133,11 +153,6 @@ button:hover {
 }
 
 @media (max-width: 840px) {
-  .topbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
   .workspace-section {
     grid-template-columns: 1fr;
   }
@@ -153,4 +168,3 @@ button:hover {
     min-height: 320px;
   }
 }
-

@@ -30,6 +30,10 @@ export function serializeProgram(program: ProgramNode): string {
   return program.statements.map((statement) => serializeExpression(statement)).join(';\n')
 }
 
+export function formatProgram(program: ProgramNode): string {
+  return program.statements.map((statement) => formatExpression(statement, 0, 'root')).join(';\n')
+}
+
 export function serializeExpression(node: ExpressionNode, parentPrecedence = 0): string {
   switch (node.type) {
     case 'Variable':
@@ -53,6 +57,52 @@ export function serializeExpression(node: ExpressionNode, parentPrecedence = 0):
       return unaryPrecedence < parentPrecedence ? `(${code})` : code
     }
   }
+}
+
+type FormatContext = 'root' | 'ternaryBranch' | 'functionArg'
+
+function formatExpression(node: ExpressionNode, level: number, context: FormatContext): string {
+  switch (node.type) {
+    case 'Ternary':
+      return formatTernary(node, level)
+    case 'FunctionCall':
+      return shouldFormatFunctionMultiline(node, context)
+        ? formatFunctionCall(node, level)
+        : serializeExpression(node)
+    default:
+      return serializeExpression(node)
+  }
+}
+
+function formatTernary(node: Extract<ExpressionNode, { type: 'Ternary' }>, level: number): string {
+  return [
+    serializeExpression(node.condition),
+    `${indent(level + 1)}? ${formatExpression(node.whenTrue, level + 1, 'ternaryBranch')}`,
+    `${indent(level + 1)}: ${formatExpression(node.whenFalse, level + 1, 'ternaryBranch')}`,
+  ].join('\n')
+}
+
+function formatFunctionCall(node: Extract<ExpressionNode, { type: 'FunctionCall' }>, level: number): string {
+  const argIndent = indent(level + 2)
+  const closeIndent = indent(level + 1)
+  const args = node.args
+    .map((arg, index) => {
+      const suffix = index === node.args.length - 1 ? '' : ','
+      return `${argIndent}${formatExpression(arg, level + 2, 'functionArg')}${suffix}`
+    })
+    .join('\n')
+
+  return `${node.name}(\n${args}\n${closeIndent})`
+}
+
+function shouldFormatFunctionMultiline(node: Extract<ExpressionNode, { type: 'FunctionCall' }>, context: FormatContext): boolean {
+  if (node.args.some((arg) => arg.type === 'Ternary')) return true
+  if (serializeExpression(node).length > 80) return true
+  return context === 'ternaryBranch' && node.args.length > 1
+}
+
+function indent(level: number): string {
+  return '  '.repeat(level)
 }
 
 function serializeVariable(name: string): string {

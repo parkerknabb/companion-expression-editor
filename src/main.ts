@@ -8,12 +8,14 @@ import {
   workspaceLoad,
   workspaceSave,
   workspaceToProgram,
+  isExpressionConnection,
 } from './blockly/workspace'
 import { parseExpressionProgram } from './expression/parse'
-import { serializeProgram } from './expression/serialize'
+import { formatProgram, serializeProgram } from './expression/serialize'
 import './style.css'
 
 const storageKey = 'companion-expression-editor.workspace.v1'
+const formatStorageKey = 'companion-expression-editor.pretty-output.v1'
 
 defineCompanionBlocks()
 Blockly.setLocale(blocklyLocale(En))
@@ -28,13 +30,19 @@ app.innerHTML = `
         <h1>Companion Expression Editor</h1>
         <p>Build Bitfocus Companion button expressions visually, then copy the expression.</p>
       </div>
-      <button class="copy-button" id="copyExpression" type="button">Copy</button>
     </header>
 
     <section class="workspace-section" aria-label="Expression builder">
       <div id="blocklyDiv" class="blockly-area"></div>
       <aside class="side-panel">
-        <label class="panel-label" for="expressionOutput">Expression</label>
+        <div class="expression-header">
+          <label class="panel-label" for="expressionOutput">Expression</label>
+          <label class="format-toggle">
+            <input id="prettyOutput" type="checkbox" checked />
+            <span>Pretty print</span>
+          </label>
+          <button class="copy-button" id="copyExpression" type="button">Copy</button>
+        </div>
         <textarea id="expressionOutput" class="expression-output" spellcheck="false"></textarea>
 
         <div class="button-row">
@@ -50,10 +58,12 @@ app.innerHTML = `
 
 const blocklyDiv = requiredElement<HTMLDivElement>('#blocklyDiv')
 const expressionOutput = requiredElement<HTMLTextAreaElement>('#expressionOutput')
+const prettyOutput = requiredElement<HTMLInputElement>('#prettyOutput')
 const importExpression = requiredElement<HTMLButtonElement>('#importExpression')
 const copyExpression = requiredElement<HTMLButtonElement>('#copyExpression')
 const resetWorkspace = requiredElement<HTMLButtonElement>('#resetWorkspace')
 const statusMessage = requiredElement<HTMLParagraphElement>('#statusMessage')
+let latestWorkspacePointer: Blockly.utils.Coordinate | null = null
 
 const workspace = Blockly.inject(blocklyDiv, {
   toolbox,
@@ -74,11 +84,22 @@ const workspace = Blockly.inject(blocklyDiv, {
   },
 })
 
+window.addEventListener('pointermove', (event) => {
+  latestWorkspacePointer = eventToWorkspaceCoordinate(workspace, event)
+})
+
+restoreFormatPreference()
 restoreWorkspace()
 ensureDefaultWorkspace(workspace)
 syncExpression()
 
 workspace.addChangeListener((event) => {
+  if (connectExpressionBlockUnderDropArea(workspace, event)) {
+    syncExpression()
+    saveWorkspace()
+    return
+  }
+
   if (event.isUiEvent) return
   syncExpression()
   saveWorkspace()
@@ -86,6 +107,11 @@ workspace.addChangeListener((event) => {
 
 importExpression.addEventListener('click', () => {
   importExpressionText()
+})
+
+prettyOutput.addEventListener('change', () => {
+  localStorage.setItem(formatStorageKey, String(prettyOutput.checked))
+  syncExpression(prettyOutput.checked ? 'Pretty output enabled.' : 'Compact output enabled.')
 })
 
 expressionOutput.addEventListener('paste', (event) => {
@@ -120,7 +146,7 @@ window.addEventListener('resize', () => Blockly.svgResize(workspace))
 function syncExpression(status = 'Workspace saved locally.'): void {
   try {
     const program = workspaceToProgram(workspace)
-    expressionOutput.value = serializeProgram(program)
+    expressionOutput.value = prettyOutput.checked ? formatProgram(program) : serializeProgram(program)
     setStatus(status, 'ok')
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to generate expression.'
@@ -152,6 +178,85 @@ function restoreWorkspace(): void {
   } catch {
     localStorage.removeItem(storageKey)
   }
+}
+
+function restoreFormatPreference(): void {
+  prettyOutput.checked = localStorage.getItem(formatStorageKey) !== 'false'
+}
+
+type BlockDragEvent = Blockly.Events.Abstract & {
+  blockId?: string
+  isStart?: boolean
+}
+
+function connectExpressionBlockUnderDropArea(workspace: Blockly.WorkspaceSvg, event: Blockly.Events.Abstract): boolean {
+  if (event.type !== Blockly.Events.BLOCK_DRAG) return false
+
+  const dragEvent = event as BlockDragEvent
+  if (dragEvent.isStart !== false || !dragEvent.blockId) return false
+
+  const block = workspace.getBlockById(dragEvent.blockId) as Blockly.BlockSvg | null
+  if (!block || !block.outputConnection || block.outputConnection.targetConnection || !latestWorkspacePointer) {
+    return false
+  }
+
+  const targetConnection = findExpressionInputNearPointer(workspace, block, latestWorkspacePointer)
+  if (!targetConnection) return false
+
+  targetConnection.connect(block.outputConnection)
+  block.render()
+  return true
+}
+
+function findExpressionInputNearPointer(
+  workspace: Blockly.WorkspaceSvg,
+  draggedBlock: Blockly.BlockSvg,
+  pointer: Blockly.utils.Coordinate,
+): Blockly.Connection | null {
+  const draggedIds = new Set(draggedBlock.getDescendants(false).map((block) => block.id))
+  const checker = draggedBlock.outputConnection?.getConnectionChecker()
+  let closestConnection: Blockly.Connection | null = null
+  let closestDistance = Number.POSITIVE_INFINITY
+  const searchRadius = 56 / workspace.scale
+
+  if (!draggedBlock.outputConnection || !checker) return null
+
+  workspace.getAllBlocks(false).forEach((block) => {
+    if (draggedIds.has(block.id)) return
+
+    block.inputList.forEach((input) => {
+      const connection = input.connection
+      if (!connection || connection.type !== Blockly.INPUT_VALUE || connection.targetConnection) return
+      if (!isExpressionConnection(connection)) return
+      if (!checker.canConnect(draggedBlock.outputConnection, connection, false)) return
+
+      const distance = Blockly.utils.Coordinate.distance(pointer, new Blockly.utils.Coordinate(connection.x, connection.y))
+      if (distance > searchRadius) return
+
+      if (distance < closestDistance) {
+        closestConnection = connection
+        closestDistance = distance
+      }
+    })
+  })
+
+  return closestConnection
+}
+
+function eventToWorkspaceCoordinate(
+  workspace: Blockly.WorkspaceSvg,
+  event: PointerEvent,
+): Blockly.utils.Coordinate | null {
+  const svgPoint = Blockly.browserEvents.mouseToSvg(
+    event as MouseEvent,
+    workspace.getParentSvg(),
+    workspace.getInverseScreenCTM(),
+  )
+  const canvasPosition = workspace.getSvgXY(workspace.getCanvas())
+  return new Blockly.utils.Coordinate(
+    (svgPoint.x - canvasPosition.x) / workspace.scale,
+    (svgPoint.y - canvasPosition.y) / workspace.scale,
+  )
 }
 
 function setStatus(message: string, tone: 'ok' | 'warn' | 'error'): void {

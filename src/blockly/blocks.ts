@@ -4,6 +4,7 @@ import { functionDefinitions } from '../expression/model'
 
 export const expressionCheck = 'CompanionExpression'
 export const statementCheck = 'CompanionStatement'
+const variadicInlineInputLimit = 3
 
 export function functionBlockType(name: FunctionName): string {
   return `companion_function_${name}`
@@ -15,19 +16,30 @@ export function defineCompanionBlocks(): void {
   Blockly.common.defineBlocksWithJsonArray([
     {
       type: 'companion_program',
-      message0: 'Companion expression %1',
+      message0: 'expression %1',
       args0: [{ type: 'input_statement', name: 'STATEMENTS', check: statementCheck }],
       colour: 215,
       tooltip: 'Top-level Companion expression statements',
     },
     {
       type: 'companion_statement',
-      message0: 'return %1',
+      message0: 'result %1',
       args0: [{ type: 'input_value', name: 'VALUE', check: expressionCheck }],
       previousStatement: statementCheck,
-      nextStatement: statementCheck,
       colour: 215,
       tooltip: 'A statement. Companion uses the last statement as the expression value.',
+    },
+    {
+      type: 'companion_if_statement',
+      message0: 'if %1',
+      args0: [{ type: 'input_value', name: 'CONDITION', check: expressionCheck }],
+      message1: 'then %1',
+      args1: [{ type: 'input_statement', name: 'TRUE', check: statementCheck }],
+      message2: 'else %1',
+      args2: [{ type: 'input_statement', name: 'FALSE', check: statementCheck }],
+      previousStatement: statementCheck,
+      colour: 290,
+      tooltip: 'A top-level conditional result. Serializes to a ternary expression.',
     },
     {
       type: 'companion_variable',
@@ -85,6 +97,7 @@ export function defineCompanionBlocks(): void {
         { type: 'input_value', name: 'TRUE', check: expressionCheck },
         { type: 'input_value', name: 'FALSE', check: expressionCheck },
       ],
+      inputsInline: true,
       output: expressionCheck,
       colour: 290,
       tooltip: 'A ternary expression: condition ? true value : false value',
@@ -163,6 +176,7 @@ export const toolbox = {
       contents: [
         { kind: 'block', type: 'companion_program' },
         { kind: 'block', type: 'companion_statement' },
+        { kind: 'block', type: 'companion_if_statement' },
         { kind: 'block', type: 'companion_ternary' },
       ],
     },
@@ -212,6 +226,7 @@ function functionDefinitionToBlock(definition: FunctionDefinition): object {
         ? `${definition.label}()`
         : `${definition.label} ${definition.argLabels.map((label, index) => `${label} %${index + 1}`).join(' ')}`,
     args0,
+    inputsInline: true,
     output: expressionCheck,
     colour: 120,
     tooltip: `${definition.label}(${definition.argLabels.join(', ')})`,
@@ -229,7 +244,6 @@ function defineVariadicFunctionBlock(definition: FunctionDefinition): void {
       this.itemCount_ = definition.minArgs
       this.setOutput(true, expressionCheck)
       this.setColour(120)
-      this.setInputsInline(false)
       this.setTooltip(`${definition.label}(${definition.argLabels.join(', ')}, ...)`)
       this.updateShape_ = () => updateVariadicShape(this, definition)
       this.updateShape_()
@@ -257,6 +271,8 @@ function defineVariadicFunctionBlock(definition: FunctionDefinition): void {
 }
 
 function updateVariadicShape(block: Blockly.Block & { itemCount_: number }, definition: FunctionDefinition): void {
+  block.setInputsInline(block.itemCount_ <= variadicInlineInputLimit)
+
   if (!block.getInput('FUNCTION_LABEL')) {
     block.appendDummyInput('FUNCTION_LABEL').appendField(definition.label)
   }
