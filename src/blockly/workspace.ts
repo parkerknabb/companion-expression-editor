@@ -1,5 +1,5 @@
 import * as Blockly from 'blockly/core'
-import type { BinaryOperator, ExpressionNode, FunctionName, ProgramNode, UnaryOperator } from '../expression/model'
+import type { BinaryOperator, ExpressionNode, FunctionName, ProgramNode, StatementNode, TemplateStringNode, UnaryOperator } from '../expression/model'
 import { findFunctionDefinition, functionDefinitions } from '../expression/model'
 import { expressionCheck, functionBlockType } from './blocks'
 import { escapeStringField, unescapeStringField } from './stringField'
@@ -9,11 +9,11 @@ const defaultLiteral: ExpressionNode = { type: 'Literal', value: '' }
 export function workspaceToProgram(workspace: Blockly.Workspace): ProgramNode {
   const programBlock =
     workspace.getTopBlocks(false).find((block) => block.type === 'companion_program') ??
-    workspace.getTopBlocks(false).find((block) => block.type === 'companion_statement' || block.type === 'companion_if_statement')
+    workspace.getTopBlocks(false).find((block) => block.type === 'companion_assignment' || block.type === 'companion_statement' || block.type === 'companion_if_statement')
 
   if (!programBlock) return { type: 'Program', statements: [defaultLiteral] }
 
-  if (programBlock.type === 'companion_statement' || programBlock.type === 'companion_if_statement') {
+  if (programBlock.type === 'companion_assignment' || programBlock.type === 'companion_statement' || programBlock.type === 'companion_if_statement') {
     return { type: 'Program', statements: collectStatements(programBlock) }
   }
 
@@ -65,11 +65,17 @@ export function ensureDefaultWorkspace(workspace: Blockly.WorkspaceSvg): void {
   }
 }
 
-function collectStatements(first: Blockly.Block): ExpressionNode[] {
-  const statements: ExpressionNode[] = []
+function collectStatements(first: Blockly.Block): StatementNode[] {
+  const statements: StatementNode[] = []
   let current: Blockly.Block | null = first
   while (current) {
-    if (current.type === 'companion_statement') {
+    if (current.type === 'companion_assignment') {
+      statements.push({
+        type: 'Assignment',
+        name: String(current.getFieldValue('NAME') ?? ''),
+        value: childExpression(current, 'VALUE'),
+      })
+    } else if (current.type === 'companion_statement') {
       const value = current.getInputTargetBlock('VALUE')
       statements.push(value ? blockToExpression(value) : defaultLiteral)
     } else if (current.type === 'companion_if_statement') {
@@ -84,8 +90,12 @@ function blockToExpression(block: Blockly.Block): ExpressionNode {
   switch (block.type) {
     case 'companion_variable':
       return { type: 'Variable', name: String(block.getFieldValue('NAME') ?? '') }
+    case 'companion_local_reference':
+      return { type: 'LocalReference', name: String(block.getFieldValue('NAME') ?? '') }
     case 'companion_string':
       return { type: 'Literal', value: unescapeStringField(String(block.getFieldValue('VALUE') ?? '')) }
+    case 'companion_template_string':
+      return blockToTemplateString(block)
     case 'companion_number':
       return { type: 'Literal', value: Number(block.getFieldValue('VALUE') ?? 0) }
     case 'companion_boolean':
@@ -204,19 +214,27 @@ function connectStatement(
   return child
 }
 
-function expressionToStatementBlock(workspace: Blockly.WorkspaceSvg, expression: ExpressionNode): Blockly.BlockSvg {
-  if (expression.type === 'Ternary') {
+function expressionToStatementBlock(workspace: Blockly.WorkspaceSvg, statement: StatementNode): Blockly.BlockSvg {
+  if (statement.type === 'Assignment') {
+    const block = workspace.newBlock('companion_assignment') as Blockly.BlockSvg
+    block.initSvg()
+    block.setFieldValue(statement.name, 'NAME')
+    connectExpression(workspace, block, 'VALUE', statement.value)
+    return block
+  }
+
+  if (statement.type === 'Ternary') {
     const block = workspace.newBlock('companion_if_statement') as Blockly.BlockSvg
     block.initSvg()
-    connectExpression(workspace, block, 'CONDITION', expression.condition)
-    connectStatement(workspace, block, 'TRUE', expression.whenTrue)
-    connectStatement(workspace, block, 'FALSE', expression.whenFalse)
+    connectExpression(workspace, block, 'CONDITION', statement.condition)
+    connectStatement(workspace, block, 'TRUE', statement.whenTrue)
+    connectStatement(workspace, block, 'FALSE', statement.whenFalse)
     return block
   }
 
   const block = workspace.newBlock('companion_statement') as Blockly.BlockSvg
   block.initSvg()
-  connectExpression(workspace, block, 'VALUE', expression)
+  connectExpression(workspace, block, 'VALUE', statement)
   return block
 }
 
@@ -231,6 +249,9 @@ function expressionToBlock(workspace: Blockly.WorkspaceSvg, expression: Expressi
       connectExpression(workspace, block, 'CONDITION', expression.condition)
       connectExpression(workspace, block, 'TRUE', expression.whenTrue)
       connectExpression(workspace, block, 'FALSE', expression.whenFalse)
+      break
+    case 'TemplateString':
+      connectTemplateString(workspace, block, expression)
       break
     case 'FunctionCall':
       expression.args.forEach((arg, index) => {
@@ -257,6 +278,16 @@ function countFunctionInputs(block: Blockly.Block): number {
 }
 
 function configureDynamicFunctionShape(block: Blockly.Block, expression: ExpressionNode): void {
+  if (expression.type === 'TemplateString') {
+    const dynamicBlock = block as Blockly.Block & {
+      itemCount_?: number
+      updateShape_?: () => void
+    }
+    dynamicBlock.itemCount_ = Math.max(1, expression.parts.filter((part) => typeof part !== 'string').length + 1)
+    dynamicBlock.updateShape_?.()
+    return
+  }
+
   if (expression.type !== 'FunctionCall') return
   const definition = findFunctionDefinition(expression.name)
   if (!definition?.variadic) return
@@ -271,6 +302,8 @@ function configureDynamicFunctionShape(block: Blockly.Block, expression: Express
 
 function blockTypeForExpression(expression: ExpressionNode): string {
   if (expression.type === 'Variable') return 'companion_variable'
+  if (expression.type === 'LocalReference') return 'companion_local_reference'
+  if (expression.type === 'TemplateString') return 'companion_template_string'
   if (expression.type === 'Ternary') return 'companion_ternary'
   if (expression.type === 'BinaryExpression') return 'companion_binary'
   if (expression.type === 'UnaryExpression') return 'companion_unary'
@@ -286,6 +319,9 @@ function blockTypeForExpression(expression: ExpressionNode): string {
 function applyExpressionFields(block: Blockly.Block, expression: ExpressionNode): void {
   switch (expression.type) {
     case 'Variable':
+      block.setFieldValue(expression.name, 'NAME')
+      break
+    case 'LocalReference':
       block.setFieldValue(expression.name, 'NAME')
       break
     case 'Literal':
@@ -307,6 +343,55 @@ function applyExpressionFields(block: Blockly.Block, expression: ExpressionNode)
     default:
       break
   }
+}
+
+function blockToTemplateString(block: Blockly.Block): TemplateStringNode {
+  const interpolationCount = countConnectedTemplateInputs(block)
+  const parts: TemplateStringNode['parts'] = []
+
+  for (let index = 0; index < interpolationCount; index += 1) {
+    parts.push(unescapeStringField(String(block.getFieldValue(`TEXT${index}`) ?? '')))
+    const child = block.getInputTargetBlock(`EXPR${index}`)
+    if (child) {
+      parts.push(blockToExpression(child))
+    }
+  }
+
+  parts.push(unescapeStringField(String(block.getFieldValue(`TEXT${interpolationCount}`) ?? '')))
+  return { type: 'TemplateString', parts: trimUnusedTemplateParts(parts) }
+}
+
+function trimUnusedTemplateParts(parts: TemplateStringNode['parts']): TemplateStringNode['parts'] {
+  const trimmed = [...parts]
+  while (trimmed.length > 1 && typeof trimmed[trimmed.length - 1] === 'string' && trimmed[trimmed.length - 1] === '') {
+    trimmed.pop()
+  }
+  return trimmed.length > 0 ? trimmed : ['']
+}
+
+function countConnectedTemplateInputs(block: Blockly.Block): number {
+  let highestConnected = -1
+  block.inputList.forEach((input) => {
+    if (!input.name.startsWith('EXPR') || !input.connection?.targetBlock()) return
+    highestConnected = Math.max(highestConnected, Number(input.name.replace('EXPR', '')))
+  })
+  return highestConnected + 1
+}
+
+function connectTemplateString(workspace: Blockly.WorkspaceSvg, block: Blockly.Block, expression: TemplateStringNode): void {
+  let textIndex = 0
+  let expressionIndex = 0
+
+  expression.parts.forEach((part) => {
+    if (typeof part === 'string') {
+      block.setFieldValue(escapeStringField(part), `TEXT${textIndex}`)
+      textIndex += 1
+      return
+    }
+
+    connectExpression(workspace, block, `EXPR${expressionIndex}`, part)
+    expressionIndex += 1
+  })
 }
 
 export function workspaceSave(workspace: Blockly.Workspace): object {

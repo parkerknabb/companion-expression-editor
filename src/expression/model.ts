@@ -1,14 +1,18 @@
 export type ExpressionNode =
   | VariableNode
+  | LocalReferenceNode
   | LiteralNode
+  | TemplateStringNode
   | TernaryNode
   | FunctionCallNode
   | BinaryExpressionNode
   | UnaryExpressionNode
 
+export type StatementNode = ExpressionNode | AssignmentNode
+
 export interface ProgramNode {
   type: 'Program'
-  statements: ExpressionNode[]
+  statements: StatementNode[]
 }
 
 export interface VariableNode {
@@ -16,9 +20,25 @@ export interface VariableNode {
   name: string
 }
 
+export interface LocalReferenceNode {
+  type: 'LocalReference'
+  name: string
+}
+
+export interface AssignmentNode {
+  type: 'Assignment'
+  name: string
+  value: ExpressionNode
+}
+
 export interface LiteralNode {
   type: 'Literal'
   value: string | number | boolean | null
+}
+
+export interface TemplateStringNode {
+  type: 'TemplateString'
+  parts: Array<string | ExpressionNode>
 }
 
 export interface TernaryNode {
@@ -81,6 +101,8 @@ export interface FunctionDefinition {
   category: 'Numeric' | 'String' | 'Variable' | 'Bool' | 'Time' | 'General'
   variadic?: boolean
 }
+
+export const variadicInlineInputLimit = 3
 
 export type FunctionName =
   | 'length'

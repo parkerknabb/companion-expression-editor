@@ -3,6 +3,7 @@ import type {
   BinaryOperator,
   ExpressionNode,
   ProgramNode,
+  StatementNode,
   UnaryOperator,
 } from './model'
 import { binaryOperators, findFunctionDefinition, unaryOperators } from './model'
@@ -29,18 +30,85 @@ export function parseExpressionProgram(input: string): ProgramNode {
 
   return {
     type: 'Program',
-    statements: statements.map((statement) => parseOne(statement)),
+    statements: statements.map((statement) => parseStatement(statement)),
   }
 }
 
-function parseOne(statement: string): ExpressionNode {
+function parseStatement(statement: string): StatementNode {
+  const assignment = splitAssignment(statement.trim())
+  if (assignment) {
+    return {
+      type: 'Assignment',
+      name: assignment.name,
+      value: parseExpression(assignment.value),
+    }
+  }
+
+  return parseExpression(statement)
+}
+
+function parseExpression(statement: string): ExpressionNode {
   try {
-    return fromJsep(jsep(preprocessVariables(statement.trim())) as JsepNode)
+    return fromJsep(jsep(preprocessVariables(preprocessTemplates(statement.trim()))) as JsepNode)
   } catch (error) {
     if (error instanceof ExpressionParseError) throw error
     const message = error instanceof Error ? error.message : 'Unknown parser error'
     throw new ExpressionParseError(message)
   }
+}
+
+function splitAssignment(statement: string): { name: string; value: string } | null {
+  let quote: string | null = null
+  let escaped = false
+  let parenDepth = 0
+  let templateDepth = 0
+
+  for (let index = 0; index < statement.length; index += 1) {
+    const char = statement[index]
+    const next = statement[index + 1]
+
+    if (quote) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === quote) {
+        quote = null
+      }
+      continue
+    }
+
+    if (templateDepth > 0) {
+      if (char === '`') templateDepth -= 1
+      if (char === '$' && next === '{') {
+        const end = findTemplateInterpolationEnd(statement, index + 2)
+        if (end === -1) throw new ExpressionParseError('Template interpolation is missing a closing brace.')
+        index = end
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char
+      continue
+    }
+    if (char === '`') {
+      templateDepth += 1
+      continue
+    }
+    if (char === '(') parenDepth += 1
+    if (char === ')') parenDepth = Math.max(0, parenDepth - 1)
+    if (char !== '=' || parenDepth !== 0) continue
+    if (next === '=' || statement[index - 1] === '=' || statement[index - 1] === '!' || statement[index - 1] === '<' || statement[index - 1] === '>') continue
+
+    const name = statement.slice(0, index).trim()
+    const value = statement.slice(index + 1).trim()
+    if (!/^[A-Za-z_$][\w$]*$/.test(name)) return null
+    if (!value) throw new ExpressionParseError(`Local value "${name}" needs an expression.`)
+    return { name, value }
+  }
+
+  return null
 }
 
 function preprocessVariables(input: string): string {
@@ -64,7 +132,7 @@ function preprocessVariables(input: string): string {
       continue
     }
 
-    if (char === '"' || char === "'") {
+    if (char === '"' || char === "'" || char === '`') {
       quote = char
       output += char
       continue
@@ -83,6 +151,120 @@ function preprocessVariables(input: string): string {
   }
 
   return output
+}
+
+function preprocessTemplates(input: string): string {
+  let output = ''
+  let quote: string | null = null
+  let escaped = false
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index]
+
+    if (quote) {
+      output += char
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === quote) {
+        quote = null
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char
+      output += char
+      continue
+    }
+
+    if (char === '`') {
+      const parsed = parseTemplateLiteral(input, index)
+      output += parsed.replacement
+      index = parsed.end
+      continue
+    }
+
+    output += char
+  }
+
+  return output
+}
+
+function parseTemplateLiteral(input: string, start: number): { replacement: string; end: number } {
+  const args: string[] = []
+  let text = ''
+  let escaped = false
+
+  for (let index = start + 1; index < input.length; index += 1) {
+    const char = input[index]
+    const next = input[index + 1]
+
+    if (escaped) {
+      text += char
+      escaped = false
+      continue
+    }
+
+    if (char === '\\') {
+      text += char
+      escaped = true
+      continue
+    }
+
+    if (char === '`') {
+      args.push(JSON.stringify(text))
+      return { replacement: `__companionTemplate(${args.join(', ')})`, end: index }
+    }
+
+    if (char === '$' && next === '{') {
+      const end = findTemplateInterpolationEnd(input, index + 2)
+      if (end === -1) throw new ExpressionParseError('Template interpolation is missing a closing brace.')
+      args.push(JSON.stringify(text))
+      args.push(preprocessVariables(preprocessTemplates(input.slice(index + 2, end).trim())))
+      text = ''
+      index = end
+      continue
+    }
+
+    text += char
+  }
+
+  throw new ExpressionParseError('Template string is missing a closing backtick.')
+}
+
+function findTemplateInterpolationEnd(input: string, start: number): number {
+  let depth = 1
+  let quote: string | null = null
+  let escaped = false
+
+  for (let index = start; index < input.length; index += 1) {
+    const char = input[index]
+
+    if (quote) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === quote) {
+        quote = null
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      continue
+    }
+    if (char === '{') depth += 1
+    if (char === '}') {
+      depth -= 1
+      if (depth === 0) return index
+    }
+  }
+
+  return -1
 }
 
 function findVariableReferenceEnd(input: string, start: number): number {
@@ -109,9 +291,12 @@ function splitStatements(input: string): string[] {
   let quote: string | null = null
   let escaped = false
   let parenDepth = 0
+  let braceDepth = 0
+  let templateDepth = 0
 
   for (let index = 0; index < input.length; index += 1) {
     const char = input[index]
+    const next = input[index + 1]
 
     if (quote) {
       if (escaped) {
@@ -124,13 +309,29 @@ function splitStatements(input: string): string[] {
       continue
     }
 
+    if (templateDepth > 0) {
+      if (char === '`') templateDepth -= 1
+      if (char === '$' && next === '{') {
+        const end = findTemplateInterpolationEnd(input, index + 2)
+        if (end === -1) throw new ExpressionParseError('Template interpolation is missing a closing brace.')
+        index = end
+      }
+      continue
+    }
+
     if (char === '"' || char === "'") {
       quote = char
       continue
     }
+    if (char === '`') {
+      templateDepth += 1
+      continue
+    }
     if (char === '(') parenDepth += 1
     if (char === ')') parenDepth = Math.max(0, parenDepth - 1)
-    if (char === ';' && parenDepth === 0) {
+    if (char === '{') braceDepth += 1
+    if (char === '}') braceDepth = Math.max(0, braceDepth - 1)
+    if ((char === ';' || isStatementNewline(input, index)) && parenDepth === 0 && braceDepth === 0) {
       statements.push(input.slice(start, index))
       start = index + 1
     }
@@ -138,6 +339,20 @@ function splitStatements(input: string): string[] {
 
   statements.push(input.slice(start))
   return statements
+}
+
+function isStatementNewline(input: string, index: number): boolean {
+  if (input[index] !== '\n') return false
+
+  const before = input.slice(0, index).trimEnd()
+  const after = input.slice(index + 1).trimStart()
+  if (!before || !after) return false
+
+  const previous = before[before.length - 1]
+  const next = after[0]
+  if ('?::,+-*/%&|^('.includes(previous)) return false
+  if ('?:,)]}'.includes(next)) return false
+  return true
 }
 
 function fromJsep(node: JsepNode): ExpressionNode {
@@ -148,7 +363,7 @@ function fromJsep(node: JsepNode): ExpressionNode {
       if (node.name === 'true') return { type: 'Literal', value: true }
       if (node.name === 'false') return { type: 'Literal', value: false }
       if (node.name === 'null') return { type: 'Literal', value: null }
-      throw new ExpressionParseError(`Unsupported identifier "${String(node.name)}". Use Companion variables like $(internal:time_hms).`)
+      return { type: 'LocalReference', name: String(node.name) }
     case 'BinaryExpression':
     case 'LogicalExpression':
       return fromBinary(node)
@@ -206,6 +421,10 @@ function fromCall(node: JsepNode): ExpressionNode {
     return { type: 'Variable', name: arg.value }
   }
 
+  if (name === '__companionTemplate') {
+    return fromTemplateCall(args)
+  }
+
   if (name === 'parseVariables') {
     return fromParseVariablesCall(args)
   }
@@ -225,6 +444,22 @@ function fromCall(node: JsepNode): ExpressionNode {
     type: 'FunctionCall',
     name: definition.name,
     args,
+  }
+}
+
+function fromTemplateCall(args: ExpressionNode[]): ExpressionNode {
+  if (args.length === 0) return { type: 'TemplateString', parts: [''] }
+  return {
+    type: 'TemplateString',
+    parts: args.map((arg, index) => {
+      if (index % 2 === 0) {
+        if (arg.type !== 'Literal' || typeof arg.value !== 'string') {
+          throw new ExpressionParseError('Template string text parts must be strings.')
+        }
+        return arg.value
+      }
+      return arg
+    }),
   }
 }
 

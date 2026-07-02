@@ -6,10 +6,7 @@ test('imports an expression and restores it after refresh', async ({ page }) => 
   const expression = '$(custom:state) == "on" ? concat("A", $(internal:time_hms)) : "off"'
   const formattedExpression = [
     '$(custom:state) == "on"',
-    '  ? concat(',
-    '      "A",',
-    '      $(internal:time_hms)',
-    '    )',
+    '  ? concat("A", $(internal:time_hms))',
     '  : "off"',
   ].join('\n')
   const output = page.getByRole('textbox', { name: 'Expression' })
@@ -30,10 +27,7 @@ test('auto-imports pasted expressions', async ({ page, browserName }) => {
   const expression = '$(custom:state) == "on" ? concat("A", $(internal:time_hms)) : "off"'
   const formattedExpression = [
     '$(custom:state) == "on"',
-    '  ? concat(',
-    '      "A",',
-    '      $(internal:time_hms)',
-    '    )',
+    '  ? concat("A", $(internal:time_hms))',
     '  : "off"',
   ].join('\n')
   const output = page.getByRole('textbox', { name: 'Expression' })
@@ -55,10 +49,7 @@ test('toggles expression output between pretty and compact formatting', async ({
   const expression = '$(custom:state) == "on" ? concat("A", $(internal:time_hms)) : "off"'
   const formattedExpression = [
     '$(custom:state) == "on"',
-    '  ? concat(',
-    '      "A",',
-    '      $(internal:time_hms)',
-    '    )',
+    '  ? concat("A", $(internal:time_hms))',
     '  : "off"',
   ].join('\n')
   const output = page.getByRole('textbox', { name: 'Expression' })
@@ -81,13 +72,21 @@ test('imports variadic function calls', async ({ page }) => {
   await page.goto('/')
 
   const expression = 'concat("a", "b", "c", "d")'
+  const formattedExpression = [
+    'concat(',
+    '    "a",',
+    '    "b",',
+    '    "c",',
+    '    "d"',
+    '  )',
+  ].join('\n')
   const output = page.getByRole('textbox', { name: 'Expression' })
 
   await output.fill(expression)
   await page.getByRole('button', { name: 'Import' }).click()
 
   await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
-  await expect(output).toHaveValue(expression)
+  await expect(output).toHaveValue(formattedExpression)
 })
 
 test('imports nested variables as native variables and serializes parseVariables automatically', async ({ page }) => {
@@ -100,6 +99,18 @@ test('imports nested variables as native variables and serializes parseVariables
 
   await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
   await expect(output).toHaveValue('parseVariables("$(custom:$(custom:b))")')
+})
+
+test('imports template strings and local assignments', async ({ page }) => {
+  await page.goto('/')
+
+  const output = page.getByRole('textbox', { name: 'Expression' })
+
+  await output.fill('myval = $(custom:a) + $(custom:b)\n`${myval}dB`')
+  await page.getByRole('button', { name: 'Import' }).click()
+
+  await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
+  await expect(output).toHaveValue('myval = $(custom:a) + $(custom:b);\n`${myval}dB`')
 })
 
 test('shows escaped control characters in imported text blocks', async ({ page }) => {

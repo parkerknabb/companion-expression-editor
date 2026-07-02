@@ -1,4 +1,5 @@
-import type { BinaryOperator, ExpressionNode, ProgramNode } from './model'
+import type { BinaryOperator, ExpressionNode, ProgramNode, StatementNode } from './model'
+import { findFunctionDefinition, variadicInlineInputLimit } from './model'
 
 const precedence: Record<BinaryOperator, number> = {
   '||': 1,
@@ -27,19 +28,33 @@ const precedence: Record<BinaryOperator, number> = {
 const unaryPrecedence = 12
 
 export function serializeProgram(program: ProgramNode): string {
-  return program.statements.map((statement) => serializeExpression(statement)).join(';\n')
+  return program.statements.map((statement) => serializeStatement(statement)).join(';\n')
 }
 
 export function formatProgram(program: ProgramNode): string {
-  return program.statements.map((statement) => formatExpression(statement, 0, 'root')).join(';\n')
+  return program.statements.map((statement) => formatStatement(statement)).join(';\n')
+}
+
+function serializeStatement(statement: StatementNode): string {
+  if (statement.type === 'Assignment') return `${statement.name} = ${serializeExpression(statement.value)}`
+  return serializeExpression(statement)
+}
+
+function formatStatement(statement: StatementNode): string {
+  if (statement.type === 'Assignment') return `${statement.name} = ${formatExpression(statement.value, 0, 'root')}`
+  return formatExpression(statement, 0, 'root')
 }
 
 export function serializeExpression(node: ExpressionNode, parentPrecedence = 0): string {
   switch (node.type) {
     case 'Variable':
       return serializeVariable(node.name)
+    case 'LocalReference':
+      return node.name
     case 'Literal':
       return serializeLiteral(node.value)
+    case 'TemplateString':
+      return serializeTemplateString(node.parts)
     case 'FunctionCall':
       return `${node.name}(${node.args.map((arg) => serializeExpression(arg)).join(', ')})`
     case 'Ternary': {
@@ -96,6 +111,8 @@ function formatFunctionCall(node: Extract<ExpressionNode, { type: 'FunctionCall'
 }
 
 function shouldFormatFunctionMultiline(node: Extract<ExpressionNode, { type: 'FunctionCall' }>, context: FormatContext): boolean {
+  const definition = findFunctionDefinition(node.name)
+  if (definition?.variadic) return node.args.length > variadicInlineInputLimit
   if (node.args.some((arg) => arg.type === 'Ternary')) return true
   if (serializeExpression(node).length > 80) return true
   return context === 'ternaryBranch' && node.args.length > 1
@@ -114,4 +131,12 @@ function serializeLiteral(value: string | number | boolean | null): string {
   if (typeof value === 'string') return JSON.stringify(value)
   if (value === null) return 'null'
   return String(value)
+}
+
+function serializeTemplateString(parts: Array<string | ExpressionNode>): string {
+  return `\`${parts.map((part) => (typeof part === 'string' ? escapeTemplateText(part) : `\${${serializeExpression(part)}}`)).join('')}\``
+}
+
+function escapeTemplateText(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${')
 }

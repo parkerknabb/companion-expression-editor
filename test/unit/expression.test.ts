@@ -70,7 +70,41 @@ describe('expression parsing and serialization', () => {
     expect(serializeProgram(program)).toBe('concat("a", "b", "c", "d");\nmax(1, 2, 3, 4) + min(5, 6, 7, 8)')
   })
 
-  it('formats nested ternaries and concat calls with readable indentation', () => {
+  it('parses template strings with Companion variable interpolation', () => {
+    const program = parseExpressionProgram('`${$(custom:a)}dB`')
+
+    expect(program.statements[0]).toEqual({
+      type: 'TemplateString',
+      parts: ['', { type: 'Variable', name: 'custom:a' }, 'dB'],
+    })
+    expect(serializeProgram(program)).toBe('`${$(custom:a)}dB`')
+  })
+
+  it('parses newline-separated local assignments and references', () => {
+    const program = parseExpressionProgram('myval = $(custom:a) + $(custom:b)\nmyval / 2')
+
+    expect(program.statements).toEqual([
+      {
+        type: 'Assignment',
+        name: 'myval',
+        value: {
+          type: 'BinaryExpression',
+          operator: '+',
+          left: { type: 'Variable', name: 'custom:a' },
+          right: { type: 'Variable', name: 'custom:b' },
+        },
+      },
+      {
+        type: 'BinaryExpression',
+        operator: '/',
+        left: { type: 'LocalReference', name: 'myval' },
+        right: { type: 'Literal', value: 2 },
+      },
+    ])
+    expect(serializeProgram(program)).toBe('myval = $(custom:a) + $(custom:b);\nmyval / 2')
+  })
+
+  it('formats ternaries while keeping small variadic calls inline', () => {
     const program = parseExpressionProgram(
       '$(custom:isDialsOnGuests) == "true" ? concat("GST 1\\n", concat(toFixed($(x32:fader_ch_09), 1), " dB")) : concat("LAV 1\\n", $(custom:audio_lav_button_held) == "true" ? concat($(sennheiser-ewdx-12:tx1_batteryGauge), "%") : concat(toFixed($(x32:fader_ch_01), 1), " dB"))',
     )
@@ -78,22 +112,24 @@ describe('expression parsing and serialization', () => {
     expect(formatProgram(program)).toBe(
       [
         '$(custom:isDialsOnGuests) == "true"',
-        '  ? concat(',
-        '      "GST 1\\n",',
-        '      concat(toFixed($(x32:fader_ch_09), 1), " dB")',
-        '    )',
-        '  : concat(',
-        '      "LAV 1\\n",',
-        '      $(custom:audio_lav_button_held) == "true"',
-        '        ? concat(',
-        '            $(sennheiser-ewdx-12:tx1_batteryGauge),',
-        '            "%"',
-        '          )',
-        '        : concat(',
-        '            toFixed($(x32:fader_ch_01), 1),',
-        '            " dB"',
-        '          )',
-        '    )',
+        '  ? concat("GST 1\\n", concat(toFixed($(x32:fader_ch_09), 1), " dB"))',
+        '  : concat("LAV 1\\n", $(custom:audio_lav_button_held) == "true" ? concat($(sennheiser-ewdx-12:tx1_batteryGauge), "%") : concat(toFixed($(x32:fader_ch_01), 1), " dB"))',
+      ].join('\n'),
+    )
+  })
+
+  it('formats variadic functions inline up to three args and vertically after that', () => {
+    const program = parseExpressionProgram('concat("a", "b", "c");\nmax(1, 2, 3, 4)')
+
+    expect(formatProgram(program)).toBe(
+      [
+        'concat("a", "b", "c");',
+        'max(',
+        '    1,',
+        '    2,',
+        '    3,',
+        '    4',
+        '  )',
       ].join('\n'),
     )
   })

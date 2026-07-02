@@ -1,10 +1,9 @@
 import * as Blockly from 'blockly/core'
 import type { FunctionDefinition, FunctionName } from '../expression/model'
-import { functionDefinitions } from '../expression/model'
+import { functionDefinitions, variadicInlineInputLimit } from '../expression/model'
 
 export const expressionCheck = 'CompanionExpression'
 export const statementCheck = 'CompanionStatement'
-const variadicInlineInputLimit = 3
 
 export function functionBlockType(name: FunctionName): string {
   return `companion_function_${name}`
@@ -12,6 +11,7 @@ export function functionBlockType(name: FunctionName): string {
 
 export function defineCompanionBlocks(): void {
   functionDefinitions.filter((definition) => definition.variadic).forEach(defineVariadicFunctionBlock)
+  defineTemplateStringBlock()
 
   Blockly.common.defineBlocksWithJsonArray([
     {
@@ -42,12 +42,32 @@ export function defineCompanionBlocks(): void {
       tooltip: 'A top-level conditional result. Serializes to a ternary expression.',
     },
     {
+      type: 'companion_assignment',
+      message0: 'set local %1 to %2',
+      args0: [
+        { type: 'field_input', name: 'NAME', text: 'myval' },
+        { type: 'input_value', name: 'VALUE', check: expressionCheck },
+      ],
+      previousStatement: statementCheck,
+      nextStatement: statementCheck,
+      colour: 215,
+      tooltip: 'Create or update a local value for later statements.',
+    },
+    {
       type: 'companion_variable',
       message0: 'variable $ ( %1 )',
       args0: [{ type: 'field_input', name: 'NAME', text: 'internal:time_hms' }],
       output: expressionCheck,
       colour: 170,
       tooltip: 'A Companion variable reference',
+    },
+    {
+      type: 'companion_local_reference',
+      message0: 'local %1',
+      args0: [{ type: 'field_input', name: 'NAME', text: 'myval' }],
+      output: expressionCheck,
+      colour: 170,
+      tooltip: 'A local value created by an earlier assignment statement.',
     },
     {
       type: 'companion_string',
@@ -175,6 +195,7 @@ export const toolbox = {
       colour: '215',
       contents: [
         { kind: 'block', type: 'companion_program' },
+        { kind: 'block', type: 'companion_assignment' },
         { kind: 'block', type: 'companion_statement' },
         { kind: 'block', type: 'companion_if_statement' },
         { kind: 'block', type: 'companion_ternary' },
@@ -186,6 +207,8 @@ export const toolbox = {
       colour: '45',
       contents: [
         { kind: 'block', type: 'companion_variable' },
+        { kind: 'block', type: 'companion_local_reference' },
+        { kind: 'block', type: 'companion_template_string' },
         { kind: 'block', type: 'companion_string' },
         { kind: 'block', type: 'companion_number' },
         { kind: 'block', type: 'companion_boolean' },
@@ -208,6 +231,85 @@ export const toolbox = {
       ],
     },
   ],
+}
+
+function defineTemplateStringBlock(): void {
+  type DynamicTemplateBlock = Blockly.Block & {
+    itemCount_: number
+    updateShape_: () => void
+  }
+
+  Blockly.Blocks.companion_template_string = {
+    init(this: DynamicTemplateBlock) {
+      this.itemCount_ = 1
+      this.setOutput(true, expressionCheck)
+      this.setColour(45)
+      this.setInputsInline(false)
+      this.setTooltip('A backtick template string with ${...} expression interpolation.')
+      this.updateShape_ = () => updateTemplateShape(this)
+      this.updateShape_()
+    },
+
+    onchange(this: DynamicTemplateBlock) {
+      if (!this.workspace || this.isInFlyout) return
+
+      const desiredCount = getDesiredTemplateInputCount(this)
+      if (desiredCount !== this.itemCount_) {
+        this.itemCount_ = desiredCount
+        this.updateShape_()
+      }
+    },
+
+    saveExtraState(this: DynamicTemplateBlock) {
+      return { itemCount: this.itemCount_ }
+    },
+
+    loadExtraState(this: DynamicTemplateBlock, state: { itemCount?: number }) {
+      this.itemCount_ = Math.max(1, Number(state.itemCount ?? 1))
+      this.updateShape_()
+    },
+  }
+}
+
+function updateTemplateShape(block: Blockly.Block & { itemCount_: number }): void {
+  if (!block.getInput('TEMPLATE_LABEL')) {
+    block.appendDummyInput('TEMPLATE_LABEL').appendField('template')
+  }
+
+  for (let index = 0; index < block.itemCount_; index += 1) {
+    if (!block.getInput(`TEXT${index}`)) {
+      block.appendDummyInput(`TEXT${index}`).appendField('text').appendField(new Blockly.FieldTextInput(''), `TEXT${index}`)
+    }
+    if (!block.getInput(`EXPR${index}`)) {
+      block.appendValueInput(`EXPR${index}`).setCheck(expressionCheck).appendField('${')
+    }
+    if (!block.getInput(`CLOSE${index}`)) {
+      block.appendDummyInput(`CLOSE${index}`).appendField('}')
+    }
+  }
+
+  if (!block.getInput(`TEXT${block.itemCount_}`)) {
+    block.appendDummyInput(`TEXT${block.itemCount_}`)
+      .appendField('text')
+      .appendField(new Blockly.FieldTextInput(''), `TEXT${block.itemCount_}`)
+  }
+
+  for (let index = block.itemCount_ + 1; block.getInput(`TEXT${index}`); index += 1) {
+    block.removeInput(`TEXT${index}`)
+  }
+  for (let index = block.itemCount_; block.getInput(`EXPR${index}`); index += 1) {
+    if (index >= block.itemCount_) block.removeInput(`EXPR${index}`)
+    if (block.getInput(`CLOSE${index}`)) block.removeInput(`CLOSE${index}`)
+  }
+}
+
+function getDesiredTemplateInputCount(block: Blockly.Block & { itemCount_: number }): number {
+  let highestFilled = -1
+  for (let index = 0; index < block.itemCount_; index += 1) {
+    if (block.getInputTargetBlock(`EXPR${index}`)) highestFilled = index
+  }
+
+  return Math.max(1, highestFilled + 2)
 }
 
 function functionDefinitionToBlock(definition: FunctionDefinition): object {

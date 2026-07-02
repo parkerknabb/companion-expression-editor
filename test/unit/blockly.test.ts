@@ -116,4 +116,44 @@ describe('Blockly variadic function blocks', () => {
 
     expect(serializeProgram(workspaceToProgram(workspace))).toBe('true ? "On" : "Off"')
   })
+
+  it('serializes local assignment and reference blocks', () => {
+    const workspace = new Blockly.Workspace()
+    const assignment = workspace.newBlock('companion_assignment')
+    const value = workspace.newBlock('companion_binary')
+    const left = workspace.newBlock('companion_variable')
+    const right = workspace.newBlock('companion_variable')
+    const result = workspace.newBlock('companion_statement')
+    const local = workspace.newBlock('companion_local_reference')
+
+    assignment.setFieldValue('myval', 'NAME')
+    left.setFieldValue('custom:a', 'NAME')
+    right.setFieldValue('custom:b', 'NAME')
+    local.setFieldValue('myval', 'NAME')
+
+    assignment.getInput('VALUE')?.connection?.connect(value.outputConnection!)
+    value.getInput('LEFT')?.connection?.connect(left.outputConnection!)
+    value.getInput('RIGHT')?.connection?.connect(right.outputConnection!)
+    assignment.nextConnection?.connect(result.previousConnection!)
+    result.getInput('VALUE')?.connection?.connect(local.outputConnection!)
+
+    expect(serializeProgram(workspaceToProgram(workspace))).toBe('myval = $(custom:a) + $(custom:b);\nmyval')
+  })
+
+  it('serializes template string blocks with interpolation', () => {
+    const workspace = new Blockly.Workspace()
+    const statement = workspace.newBlock('companion_statement')
+    const template = workspace.newBlock('companion_template_string') as Blockly.Block & {
+      onchange: () => void
+    }
+    const variable = workspace.newBlock('companion_variable')
+
+    variable.setFieldValue('custom:a', 'NAME')
+    template.setFieldValue('dB', 'TEXT1')
+    statement.getInput('VALUE')?.connection?.connect(template.outputConnection!)
+    template.getInput('EXPR0')?.connection?.connect(variable.outputConnection!)
+    template.onchange()
+
+    expect(serializeProgram(workspaceToProgram(workspace))).toBe('`${$(custom:a)}dB`')
+  })
 })
