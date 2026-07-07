@@ -26,6 +26,7 @@ const precedence: Record<BinaryOperator, number> = {
 }
 
 const unaryPrecedence = 12
+const indexPrecedence = 13
 
 export function serializeProgram(program: ProgramNode): string {
   return program.statements.map((statement) => serializeStatement(statement)).join(';\n')
@@ -57,6 +58,10 @@ export function serializeExpression(node: ExpressionNode, parentPrecedence = 0):
       return serializeTemplateString(node.parts)
     case 'FunctionCall':
       return `${node.name}(${node.args.map((arg) => serializeExpression(arg)).join(', ')})`
+    case 'IndexAccess': {
+      const code = `${serializeExpression(node.object, indexPrecedence)}[${serializeExpression(node.index)}]`
+      return indexPrecedence < parentPrecedence ? `(${code})` : code
+    }
     case 'Ternary': {
       const code = `${serializeExpression(node.condition)} ? ${serializeExpression(node.whenTrue)} : ${serializeExpression(node.whenFalse)}`
       return parentPrecedence > 0 ? `(${code})` : code

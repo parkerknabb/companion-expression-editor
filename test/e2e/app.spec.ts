@@ -113,6 +113,19 @@ test('imports template strings and local assignments', async ({ page }) => {
   await expect(output).toHaveValue('myval = $(custom:a) + $(custom:b);\n`${myval}dB`')
 })
 
+test('imports json helpers and split index access', async ({ page }) => {
+  await page.goto('/')
+
+  const output = page.getByRole('textbox', { name: 'Expression' })
+  const expression = 'jsonpath(jsonparse($(custom:payload)), "$.items[0].name");\nsplit($(custom:csv), ",")[2]'
+
+  await output.fill(expression)
+  await page.getByRole('button', { name: 'Import' }).click()
+
+  await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
+  await expect(output).toHaveValue(expression)
+})
+
 test('shows escaped control characters in imported text blocks', async ({ page }) => {
   await page.goto('/')
 

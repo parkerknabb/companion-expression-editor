@@ -378,6 +378,8 @@ function fromJsep(node: JsepNode): ExpressionNode {
       }
     case 'CallExpression':
       return fromCall(node)
+    case 'MemberExpression':
+      return fromMember(node)
     default:
       throw new ExpressionParseError(`Unsupported expression shape "${node.type}".`)
   }
@@ -444,6 +446,18 @@ function fromCall(node: JsepNode): ExpressionNode {
     type: 'FunctionCall',
     name: definition.name,
     args,
+  }
+}
+
+function fromMember(node: JsepNode): ExpressionNode {
+  if (node.computed !== true) {
+    throw new ExpressionParseError('Only bracket index access like split("a,b", ",")[0] is supported.')
+  }
+
+  return {
+    type: 'IndexAccess',
+    object: fromJsep(node.object as JsepNode),
+    index: fromJsep(node.property as JsepNode),
   }
 }
 

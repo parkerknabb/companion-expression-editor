@@ -5,6 +5,7 @@ export type ExpressionNode =
   | TemplateStringNode
   | TernaryNode
   | FunctionCallNode
+  | IndexAccessNode
   | BinaryExpressionNode
   | UnaryExpressionNode
 
@@ -52,6 +53,12 @@ export interface FunctionCallNode {
   type: 'FunctionCall'
   name: FunctionName
   args: ExpressionNode[]
+}
+
+export interface IndexAccessNode {
+  type: 'IndexAccess'
+  object: ExpressionNode
+  index: ExpressionNode
 }
 
 export interface BinaryExpressionNode {
@@ -123,6 +130,8 @@ export type FunctionName =
   | 'strlen'
   | 'substr'
   | 'split'
+  | 'jsonparse'
+  | 'jsonpath'
   | 'join'
   | 'concat'
   | 'includes'
@@ -192,6 +201,8 @@ export const functionDefinitions: FunctionDefinition[] = [
   { name: 'strlen', label: 'strlen', minArgs: 1, maxArgs: 1, argLabels: ['value'], category: 'String' },
   { name: 'substr', label: 'substr', minArgs: 2, maxArgs: 3, argLabels: ['value', 'start', 'end'], category: 'String' },
   { name: 'split', label: 'split', minArgs: 2, maxArgs: 2, argLabels: ['string', 'separator'], category: 'String' },
+  { name: 'jsonparse', label: 'jsonparse', minArgs: 1, maxArgs: 1, argLabels: ['json'], category: 'String' },
+  { name: 'jsonpath', label: 'jsonpath', minArgs: 2, maxArgs: 2, argLabels: ['json', 'path'], category: 'String' },
   { name: 'join', label: 'join', minArgs: 2, maxArgs: 2, argLabels: ['array', 'separator'], category: 'String' },
   { name: 'concat', label: 'concat', minArgs: 1, maxArgs: null, argLabels: ['value'], category: 'String', variadic: true },
   { name: 'includes', label: 'includes', minArgs: 2, maxArgs: 2, argLabels: ['value', 'find'], category: 'String' },

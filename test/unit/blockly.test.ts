@@ -1,6 +1,6 @@
 import * as Blockly from 'blockly/core'
 import { describe, expect, it } from 'vitest'
-import { defineCompanionBlocks, functionBlockType } from '../../src/blockly/blocks'
+import { defineCompanionBlocks, functionBlockType, normalizeVariableFieldInput } from '../../src/blockly/blocks'
 import { escapeStringField } from '../../src/blockly/stringField'
 import { workspaceToProgram } from '../../src/blockly/workspace'
 import { serializeProgram } from '../../src/expression/serialize'
@@ -8,6 +8,33 @@ import { serializeProgram } from '../../src/expression/serialize'
 defineCompanionBlocks()
 
 describe('Blockly variadic function blocks', () => {
+  it('strips wrapper syntax from simple pasted variable references only', () => {
+    expect(normalizeVariableFieldInput('$(custom:a)')).toBe('custom:a')
+    expect(normalizeVariableFieldInput(' $(internal:time_hms) ')).toBe('internal:time_hms')
+    expect(normalizeVariableFieldInput('$(custom:$(custom:b))')).toBe('$(custom:$(custom:b))')
+  })
+
+  it('serializes simple pasted variable references from the variable block', () => {
+    const workspace = new Blockly.Workspace()
+    const statement = workspace.newBlock('companion_statement')
+    const variable = workspace.newBlock('companion_variable')
+
+    variable.setFieldValue('$(custom:a)', 'NAME')
+    statement.getInput('VALUE')?.connection?.connect(variable.outputConnection!)
+
+    expect(variable.getFieldValue('NAME')).toBe('custom:a')
+    expect(serializeProgram(workspaceToProgram(workspace))).toBe('$(custom:a)')
+  })
+
+  it('does not strip nested variable references pasted into the variable block', () => {
+    const workspace = new Blockly.Workspace()
+    const variable = workspace.newBlock('companion_variable')
+
+    variable.setFieldValue('$(custom:$(custom:b))', 'NAME')
+
+    expect(variable.getFieldValue('NAME')).toBe('$(custom:$(custom:b))')
+  })
+
   it('keeps connected children when growing concat inputs', () => {
     const workspace = new Blockly.Workspace()
     const statement = workspace.newBlock('companion_statement')
@@ -155,5 +182,27 @@ describe('Blockly variadic function blocks', () => {
     template.onchange()
 
     expect(serializeProgram(workspaceToProgram(workspace))).toBe('`${$(custom:a)}dB`')
+  })
+
+  it('serializes index access blocks', () => {
+    const workspace = new Blockly.Workspace()
+    const statement = workspace.newBlock('companion_statement')
+    const indexAccess = workspace.newBlock('companion_index_access')
+    const split = workspace.newBlock(functionBlockType('split'))
+    const value = workspace.newBlock('companion_variable')
+    const separator = workspace.newBlock('companion_string')
+    const index = workspace.newBlock('companion_number')
+
+    value.setFieldValue('custom:csv', 'NAME')
+    separator.setFieldValue(',', 'VALUE')
+    index.setFieldValue('2', 'VALUE')
+
+    statement.getInput('VALUE')?.connection?.connect(indexAccess.outputConnection!)
+    indexAccess.getInput('OBJECT')?.connection?.connect(split.outputConnection!)
+    indexAccess.getInput('INDEX')?.connection?.connect(index.outputConnection!)
+    split.getInput('ARG0')?.connection?.connect(value.outputConnection!)
+    split.getInput('ARG1')?.connection?.connect(separator.outputConnection!)
+
+    expect(serializeProgram(workspaceToProgram(workspace))).toBe('split($(custom:csv), ",")[2]')
   })
 })

@@ -9,11 +9,11 @@ const defaultLiteral: ExpressionNode = { type: 'Literal', value: '' }
 export function workspaceToProgram(workspace: Blockly.Workspace): ProgramNode {
   const programBlock =
     workspace.getTopBlocks(false).find((block) => block.type === 'companion_program') ??
-    workspace.getTopBlocks(false).find((block) => block.type === 'companion_assignment' || block.type === 'companion_statement' || block.type === 'companion_if_statement')
+    workspace.getTopBlocks(false).find((block) => block.type === 'companion_assignment' || block.type === 'companion_expression_statement' || block.type === 'companion_statement' || block.type === 'companion_if_statement')
 
   if (!programBlock) return { type: 'Program', statements: [defaultLiteral] }
 
-  if (programBlock.type === 'companion_assignment' || programBlock.type === 'companion_statement' || programBlock.type === 'companion_if_statement') {
+  if (programBlock.type === 'companion_assignment' || programBlock.type === 'companion_expression_statement' || programBlock.type === 'companion_statement' || programBlock.type === 'companion_if_statement') {
     return { type: 'Program', statements: collectStatements(programBlock) }
   }
 
@@ -33,8 +33,8 @@ export function loadProgramIntoWorkspace(workspace: Blockly.WorkspaceSvg, progra
     programBlock.render()
 
     let previous: Blockly.Block | null = null
-    program.statements.forEach((statement) => {
-      const statementBlock = expressionToStatementBlock(workspace, statement)
+    program.statements.forEach((statement, index) => {
+      const statementBlock = expressionToStatementBlock(workspace, statement, index === program.statements.length - 1)
       statementBlock.render()
 
       if (previous) {
@@ -75,7 +75,7 @@ function collectStatements(first: Blockly.Block): StatementNode[] {
         name: String(current.getFieldValue('NAME') ?? ''),
         value: childExpression(current, 'VALUE'),
       })
-    } else if (current.type === 'companion_statement') {
+    } else if (current.type === 'companion_expression_statement' || current.type === 'companion_statement') {
       const value = current.getInputTargetBlock('VALUE')
       statements.push(value ? blockToExpression(value) : defaultLiteral)
     } else if (current.type === 'companion_if_statement') {
@@ -123,6 +123,12 @@ function blockToExpression(block: Blockly.Block): ExpressionNode {
         operator: String(block.getFieldValue('OP')) as BinaryOperator,
         left: childExpression(block, 'LEFT'),
         right: childExpression(block, 'RIGHT'),
+      }
+    case 'companion_index_access':
+      return {
+        type: 'IndexAccess',
+        object: childExpression(block, 'OBJECT'),
+        index: childExpression(block, 'INDEX'),
       }
     default:
       if (block.type.startsWith('companion_function_')) return blockToFunctionCall(block)
@@ -172,7 +178,7 @@ function childStatementExpression(block: Blockly.Block, input: string): Expressi
 }
 
 function statementBlockToExpression(block: Blockly.Block): ExpressionNode {
-  if (block.type === 'companion_statement') {
+  if (block.type === 'companion_expression_statement' || block.type === 'companion_statement') {
     const value = block.getInputTargetBlock('VALUE')
     return value ? blockToExpression(value) : defaultLiteral
   }
@@ -205,7 +211,7 @@ function connectStatement(
   inputName: string,
   expression: ExpressionNode,
 ): Blockly.BlockSvg {
-  const child = expressionToStatementBlock(workspace, expression)
+  const child = expressionToStatementBlock(workspace, expression, true)
   const input = parent.getInput(inputName)
   if (!input?.connection || !child.previousConnection) {
     throw new Error(`Cannot connect ${child.type} to ${parent.type}.${inputName}`)
@@ -214,7 +220,7 @@ function connectStatement(
   return child
 }
 
-function expressionToStatementBlock(workspace: Blockly.WorkspaceSvg, statement: StatementNode): Blockly.BlockSvg {
+function expressionToStatementBlock(workspace: Blockly.WorkspaceSvg, statement: StatementNode, isLast = true): Blockly.BlockSvg {
   if (statement.type === 'Assignment') {
     const block = workspace.newBlock('companion_assignment') as Blockly.BlockSvg
     block.initSvg()
@@ -223,7 +229,7 @@ function expressionToStatementBlock(workspace: Blockly.WorkspaceSvg, statement: 
     return block
   }
 
-  if (statement.type === 'Ternary') {
+  if (statement.type === 'Ternary' && isLast) {
     const block = workspace.newBlock('companion_if_statement') as Blockly.BlockSvg
     block.initSvg()
     connectExpression(workspace, block, 'CONDITION', statement.condition)
@@ -232,7 +238,7 @@ function expressionToStatementBlock(workspace: Blockly.WorkspaceSvg, statement: 
     return block
   }
 
-  const block = workspace.newBlock('companion_statement') as Blockly.BlockSvg
+  const block = workspace.newBlock(isLast ? 'companion_statement' : 'companion_expression_statement') as Blockly.BlockSvg
   block.initSvg()
   connectExpression(workspace, block, 'VALUE', statement)
   return block
@@ -257,6 +263,10 @@ function expressionToBlock(workspace: Blockly.WorkspaceSvg, expression: Expressi
       expression.args.forEach((arg, index) => {
         connectExpression(workspace, block, `ARG${index}`, arg)
       })
+      break
+    case 'IndexAccess':
+      connectExpression(workspace, block, 'OBJECT', expression.object)
+      connectExpression(workspace, block, 'INDEX', expression.index)
       break
     case 'BinaryExpression':
       connectExpression(workspace, block, 'LEFT', expression.left)
@@ -306,6 +316,7 @@ function blockTypeForExpression(expression: ExpressionNode): string {
   if (expression.type === 'TemplateString') return 'companion_template_string'
   if (expression.type === 'Ternary') return 'companion_ternary'
   if (expression.type === 'BinaryExpression') return 'companion_binary'
+  if (expression.type === 'IndexAccess') return 'companion_index_access'
   if (expression.type === 'UnaryExpression') return 'companion_unary'
   if (expression.type === 'FunctionCall') {
     return functionBlockType(expression.name)

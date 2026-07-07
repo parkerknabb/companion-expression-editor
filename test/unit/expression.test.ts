@@ -70,6 +70,30 @@ describe('expression parsing and serialization', () => {
     expect(serializeProgram(program)).toBe('concat("a", "b", "c", "d");\nmax(1, 2, 3, 4) + min(5, 6, 7, 8)')
   })
 
+  it('round-trips jsonparse and jsonpath helpers', () => {
+    const program = parseExpressionProgram('jsonpath(jsonparse($(custom:payload)), "$.items[0].name")')
+
+    expect(serializeProgram(program)).toBe('jsonpath(jsonparse($(custom:payload)), "$.items[0].name")')
+  })
+
+  it('round-trips split index access syntax', () => {
+    const program = parseExpressionProgram('split($(custom:csv), ",")[2]')
+
+    expect(program.statements[0]).toEqual({
+      type: 'IndexAccess',
+      object: {
+        type: 'FunctionCall',
+        name: 'split',
+        args: [
+          { type: 'Variable', name: 'custom:csv' },
+          { type: 'Literal', value: ',' },
+        ],
+      },
+      index: { type: 'Literal', value: 2 },
+    })
+    expect(serializeProgram(program)).toBe('split($(custom:csv), ",")[2]')
+  })
+
   it('parses template strings with Companion variable interpolation', () => {
     const program = parseExpressionProgram('`${$(custom:a)}dB`')
 

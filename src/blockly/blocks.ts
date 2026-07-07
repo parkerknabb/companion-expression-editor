@@ -11,6 +11,7 @@ export function functionBlockType(name: FunctionName): string {
 
 export function defineCompanionBlocks(): void {
   functionDefinitions.filter((definition) => definition.variadic).forEach(defineVariadicFunctionBlock)
+  defineVariableBlock()
   defineTemplateStringBlock()
 
   Blockly.common.defineBlocksWithJsonArray([
@@ -28,6 +29,15 @@ export function defineCompanionBlocks(): void {
       previousStatement: statementCheck,
       colour: 215,
       tooltip: 'A statement. Companion uses the last statement as the expression value.',
+    },
+    {
+      type: 'companion_expression_statement',
+      message0: 'evaluate %1',
+      args0: [{ type: 'input_value', name: 'VALUE', check: expressionCheck }],
+      previousStatement: statementCheck,
+      nextStatement: statementCheck,
+      colour: 215,
+      tooltip: 'An intermediate expression statement. Companion uses the last statement as the expression value.',
     },
     {
       type: 'companion_if_statement',
@@ -52,14 +62,6 @@ export function defineCompanionBlocks(): void {
       nextStatement: statementCheck,
       colour: 215,
       tooltip: 'Create or update a local value for later statements.',
-    },
-    {
-      type: 'companion_variable',
-      message0: 'variable $ ( %1 )',
-      args0: [{ type: 'field_input', name: 'NAME', text: 'internal:time_hms' }],
-      output: expressionCheck,
-      colour: 170,
-      tooltip: 'A Companion variable reference',
     },
     {
       type: 'companion_local_reference',
@@ -182,6 +184,18 @@ export function defineCompanionBlocks(): void {
       colour: 260,
       tooltip: 'A binary expression',
     },
+    {
+      type: 'companion_index_access',
+      message0: '%1 item # %2',
+      args0: [
+        { type: 'input_value', name: 'OBJECT', check: expressionCheck },
+        { type: 'input_value', name: 'INDEX', check: expressionCheck },
+      ],
+      inputsInline: true,
+      output: expressionCheck,
+      colour: 260,
+      tooltip: 'Bracket index access, such as split("a,b", ",")[0].',
+    },
     ...functionDefinitions.filter((definition) => !definition.variadic).map(functionDefinitionToBlock),
   ])
 }
@@ -196,6 +210,7 @@ export const toolbox = {
       contents: [
         { kind: 'block', type: 'companion_program' },
         { kind: 'block', type: 'companion_assignment' },
+        { kind: 'block', type: 'companion_expression_statement' },
         { kind: 'block', type: 'companion_statement' },
         { kind: 'block', type: 'companion_if_statement' },
         { kind: 'block', type: 'companion_ternary' },
@@ -228,9 +243,36 @@ export const toolbox = {
       contents: [
         { kind: 'block', type: 'companion_unary' },
         { kind: 'block', type: 'companion_binary' },
+        { kind: 'block', type: 'companion_index_access' },
       ],
     },
   ],
+}
+
+function defineVariableBlock(): void {
+  Blockly.Blocks.companion_variable = {
+    init() {
+      this.appendDummyInput()
+        .appendField('variable $ (')
+        .appendField(new Blockly.FieldTextInput('internal:time_hms', normalizeVariableFieldInput), 'NAME')
+        .appendField(')')
+      this.setOutput(true, expressionCheck)
+      this.setColour(170)
+      this.setTooltip('A Companion variable reference')
+    },
+  }
+}
+
+export function normalizeVariableFieldInput(value: string): string {
+  return unwrapSimpleVariableReference(value.trim()) ?? value
+}
+
+function unwrapSimpleVariableReference(value: string): string | null {
+  if (!value.startsWith('$(') || !value.endsWith(')')) return null
+
+  const name = value.slice(2, -1)
+  if (!name || name.includes('$(')) return null
+  return name
 }
 
 function defineTemplateStringBlock(): void {
