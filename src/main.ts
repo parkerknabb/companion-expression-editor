@@ -9,6 +9,7 @@ import {
   workspaceSave,
   workspaceToProgram,
   isExpressionConnection,
+  updateBlockWarnings,
 } from './blockly/workspace'
 import { parseExpressionProgram } from './expression/parse'
 import { formatProgram, serializeProgram } from './expression/serialize'
@@ -147,7 +148,8 @@ function syncExpression(status = 'Workspace saved locally.'): void {
   try {
     const program = workspaceToProgram(workspace)
     expressionOutput.value = prettyOutput.checked ? formatProgram(program) : serializeProgram(program)
-    setStatus(status, 'ok')
+    const warningCount = updateBlockWarnings(workspace)
+    setStatus(warningCount > 0 ? `${warningCount} block warning${warningCount === 1 ? '' : 's'} found.` : status, warningCount > 0 ? 'warn' : 'ok')
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to generate expression.'
     setStatus(message, 'error')

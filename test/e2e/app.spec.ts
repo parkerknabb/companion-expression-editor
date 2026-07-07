@@ -154,3 +154,15 @@ test('rejects unsupported imports without clearing the workspace', async ({ page
   await page.reload()
   await expect(output).toHaveValue(original)
 })
+
+test('rejects shorthand logical comparisons', async ({ page }) => {
+  await page.goto('/')
+
+  const output = page.getByRole('textbox', { name: 'Expression' })
+
+  await output.fill('$(atem:pgm1_input) == ("CAM 1" || "Black")')
+  await page.getByRole('button', { name: 'Import' }).click()
+
+  await expect(page.locator('#statusMessage')).toContainText('Compare each condition directly')
+  await expect(output).toHaveValue('$(atem:pgm1_input) == ("CAM 1" || "Black")')
+})

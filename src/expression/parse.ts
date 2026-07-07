@@ -390,12 +390,53 @@ function fromBinary(node: JsepNode): ExpressionNode {
   if (!binaryOperators.includes(operator)) {
     throw new ExpressionParseError(`Unsupported operator "${String(node.operator)}".`)
   }
+
+  validateLogicalComparisonShortcut(node)
+
   return {
     type: 'BinaryExpression',
     operator,
     left: fromJsep(node.left as JsepNode),
     right: fromJsep(node.right as JsepNode),
   }
+}
+
+function validateLogicalComparisonShortcut(node: JsepNode): void {
+  const operator = String(node.operator)
+  const left = node.left as JsepNode
+  const right = node.right as JsepNode
+
+  if (isEqualityOperator(operator) && (isLogicalNode(left) || isLogicalNode(right))) {
+    throw new ExpressionParseError('Compare each condition directly, for example value == "A" || value == "B".')
+  }
+
+  if (
+    isLogicalOperator(operator) &&
+    ((isComparisonNode(left) && isStandaloneChoiceNode(right)) || (isComparisonNode(right) && isStandaloneChoiceNode(left)))
+  ) {
+    throw new ExpressionParseError('Compare each condition directly, for example value == "A" || value == "B".')
+  }
+}
+
+function isEqualityOperator(operator: string): boolean {
+  return operator === '==' || operator === '!=' || operator === '===' || operator === '!=='
+}
+
+function isLogicalOperator(operator: string): boolean {
+  return operator === '||' || operator === '&&'
+}
+
+function isLogicalNode(node: JsepNode): boolean {
+  return (node.type === 'LogicalExpression' || node.type === 'BinaryExpression') && isLogicalOperator(String(node.operator))
+}
+
+function isComparisonNode(node: JsepNode): boolean {
+  if (node.type !== 'BinaryExpression') return false
+  return ['==', '!=', '===', '!==', '>', '>=', '<', '<='].includes(String(node.operator))
+}
+
+function isStandaloneChoiceNode(node: JsepNode): boolean {
+  return node.type === 'Literal'
 }
 
 function fromUnary(node: JsepNode): ExpressionNode {

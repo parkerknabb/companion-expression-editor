@@ -2,7 +2,7 @@ import * as Blockly from 'blockly/core'
 import { describe, expect, it } from 'vitest'
 import { defineCompanionBlocks, functionBlockType, normalizeVariableFieldInput } from '../../src/blockly/blocks'
 import { escapeStringField } from '../../src/blockly/stringField'
-import { workspaceToProgram } from '../../src/blockly/workspace'
+import { updateBlockWarnings, workspaceToProgram } from '../../src/blockly/workspace'
 import { serializeProgram } from '../../src/expression/serialize'
 
 defineCompanionBlocks()
@@ -205,4 +205,86 @@ describe('Blockly variadic function blocks', () => {
 
     expect(serializeProgram(workspaceToProgram(workspace))).toBe('split($(custom:csv), ",")[2]')
   })
+
+  it('warns when comparing against logical string choices', () => {
+    const workspace = new Blockly.Workspace()
+    const compare = workspace.newBlock('companion_binary')
+    const variable = workspace.newBlock('companion_variable')
+    const choices = workspace.newBlock('companion_binary')
+    const choiceA = workspace.newBlock('companion_string')
+    const choiceB = workspace.newBlock('companion_string')
+
+    compare.setFieldValue('==', 'OP')
+    choices.setFieldValue('||', 'OP')
+    variable.setFieldValue('atem:pgm1_input', 'NAME')
+    choiceA.setFieldValue('CAM 1', 'VALUE')
+    choiceB.setFieldValue('Black', 'VALUE')
+    compare.getInput('LEFT')?.connection?.connect(variable.outputConnection!)
+    compare.getInput('RIGHT')?.connection?.connect(choices.outputConnection!)
+    choices.getInput('LEFT')?.connection?.connect(choiceA.outputConnection!)
+    choices.getInput('RIGHT')?.connection?.connect(choiceB.outputConnection!)
+
+    expect(capturedWarningFor(workspace, compare)).toContain('Compare each condition directly')
+  })
+
+  it('does not warn for repeated direct comparisons', () => {
+    const workspace = new Blockly.Workspace()
+    const either = workspace.newBlock('companion_binary')
+    const leftCompare = workspace.newBlock('companion_binary')
+    const rightCompare = workspace.newBlock('companion_binary')
+
+    either.setFieldValue('||', 'OP')
+    leftCompare.setFieldValue('==', 'OP')
+    rightCompare.setFieldValue('==', 'OP')
+    either.getInput('LEFT')?.connection?.connect(leftCompare.outputConnection!)
+    either.getInput('RIGHT')?.connection?.connect(rightCompare.outputConnection!)
+
+    expect(updateBlockWarnings(workspace)).toBe(0)
+  })
+
+  it('warns for chained comparisons', () => {
+    const workspace = new Blockly.Workspace()
+    const outer = workspace.newBlock('companion_binary')
+    const inner = workspace.newBlock('companion_binary')
+    const high = workspace.newBlock('companion_number')
+
+    outer.setFieldValue('<', 'OP')
+    inner.setFieldValue('<', 'OP')
+    high.setFieldValue('5', 'VALUE')
+    outer.getInput('LEFT')?.connection?.connect(inner.outputConnection!)
+    outer.getInput('RIGHT')?.connection?.connect(high.outputConnection!)
+
+    expect(capturedWarningFor(workspace, outer)).toContain('Chained comparisons')
+  })
+
+  it('warns for excluding multiple values with OR', () => {
+    const workspace = new Blockly.Workspace()
+    const either = workspace.newBlock('companion_binary')
+    const leftCompare = workspace.newBlock('companion_binary')
+    const rightCompare = workspace.newBlock('companion_binary')
+
+    either.setFieldValue('||', 'OP')
+    leftCompare.setFieldValue('!=', 'OP')
+    rightCompare.setFieldValue('!=', 'OP')
+    either.getInput('LEFT')?.connection?.connect(leftCompare.outputConnection!)
+    either.getInput('RIGHT')?.connection?.connect(rightCompare.outputConnection!)
+
+    expect(capturedWarningFor(workspace, either)).toContain('usually needs &&')
+  })
 })
+
+function capturedWarningFor(workspace: Blockly.Workspace, block: Blockly.Block): string | null {
+  let warning: string | null = null
+  const originalSetWarningText = block.setWarningText.bind(block)
+  block.setWarningText = ((text: string | null) => {
+    warning = text
+  }) as Blockly.Block['setWarningText']
+
+  try {
+    updateBlockWarnings(workspace)
+  } finally {
+    block.setWarningText = originalSetWarningText
+  }
+
+  return warning
+}

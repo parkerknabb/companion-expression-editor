@@ -33,6 +33,21 @@ describe('expression parsing and serialization', () => {
     expect(serializeProgram(program)).toBe('!$(custom:enabled) || ($(custom:mask) & 4) == 4')
   })
 
+  it('rejects shorthand comparisons against logical string choices', () => {
+    expect(() => parseExpressionProgram('$(atem:pgm1_input) == ("CAM 1" || "Black")')).toThrow(
+      'Compare each condition directly',
+    )
+    expect(() => parseExpressionProgram('$(atem:pgm1_input) == "CAM 1" || "Black"')).toThrow(
+      'Compare each condition directly',
+    )
+  })
+
+  it('accepts repeated direct comparisons for multiple choices', () => {
+    const program = parseExpressionProgram('$(atem:pgm1_input) == "CAM 1" || $(atem:pgm1_input) == "Black"')
+
+    expect(serializeProgram(program)).toBe('$(atem:pgm1_input) == "CAM 1" || $(atem:pgm1_input) == "Black"')
+  })
+
   it('serializes nested variable references with parseVariables automatically', () => {
     const program = parseExpressionProgram('$(custom:$(custom:b))')
 

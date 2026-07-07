@@ -5,6 +5,7 @@ import { expressionCheck, functionBlockType } from './blocks'
 import { escapeStringField, unescapeStringField } from './stringField'
 
 const defaultLiteral: ExpressionNode = { type: 'Literal', value: '' }
+const logicWarningId = 'companion-logic'
 
 export function workspaceToProgram(workspace: Blockly.Workspace): ProgramNode {
   const programBlock =
@@ -63,6 +64,16 @@ export function ensureDefaultWorkspace(workspace: Blockly.WorkspaceSvg): void {
       statements: [{ type: 'Variable', name: 'internal:time_hms' }],
     })
   }
+}
+
+export function updateBlockWarnings(workspace: Blockly.Workspace): number {
+  let warningCount = 0
+  workspace.getAllBlocks(false).forEach((block) => {
+    const warning = block.type === 'companion_binary' ? getBinaryLogicWarning(block) : null
+    block.setWarningText(warning, logicWarningId)
+    if (warning) warningCount += 1
+  })
+  return warningCount
 }
 
 function collectStatements(first: Blockly.Block): StatementNode[] {
@@ -420,4 +431,58 @@ export function workspaceLoad(workspace: Blockly.WorkspaceSvg, state: object): v
 
 export function isExpressionConnection(connection: Blockly.Connection | null): boolean {
   return Boolean(connection?.getCheck()?.includes(expressionCheck))
+}
+
+function getBinaryLogicWarning(block: Blockly.Block): string | null {
+  const operator = String(block.getFieldValue('OP') ?? '')
+  const left = block.getInputTargetBlock('LEFT')
+  const right = block.getInputTargetBlock('RIGHT')
+
+  if (!left || !right) return null
+
+  if (isEqualityOperator(operator) && (isLogicalBlock(left) || isLogicalBlock(right))) {
+    return 'This does not compare against multiple choices. Compare each condition directly, for example value == "A" || value == "B".'
+  }
+
+  if (isLogicalOperator(operator) && ((isComparisonBlock(left) && isStandaloneChoiceBlock(right)) || (isComparisonBlock(right) && isStandaloneChoiceBlock(left)))) {
+    return 'This leaves one side as a standalone value. Compare each condition directly, for example value == "A" || value == "B".'
+  }
+
+  if (isComparisonOperator(operator) && (isComparisonBlock(left) || isComparisonBlock(right))) {
+    return 'Chained comparisons do not work like math notation. Use separate comparisons, for example 1 < value && value < 5.'
+  }
+
+  if (operator === '||' && isNotEqualComparisonBlock(left) && isNotEqualComparisonBlock(right)) {
+    return 'Excluding multiple values with != usually needs &&, for example value != "A" && value != "B".'
+  }
+
+  return null
+}
+
+function isComparisonBlock(block: Blockly.Block): boolean {
+  return block.type === 'companion_binary' && isComparisonOperator(String(block.getFieldValue('OP') ?? ''))
+}
+
+function isNotEqualComparisonBlock(block: Blockly.Block): boolean {
+  return block.type === 'companion_binary' && ['!=', '!=='].includes(String(block.getFieldValue('OP') ?? ''))
+}
+
+function isLogicalBlock(block: Blockly.Block): boolean {
+  return block.type === 'companion_binary' && isLogicalOperator(String(block.getFieldValue('OP') ?? ''))
+}
+
+function isStandaloneChoiceBlock(block: Blockly.Block): boolean {
+  return ['companion_string', 'companion_number', 'companion_null', 'companion_template_string'].includes(block.type)
+}
+
+function isEqualityOperator(operator: string): boolean {
+  return ['==', '!=', '===', '!=='].includes(operator)
+}
+
+function isComparisonOperator(operator: string): boolean {
+  return ['==', '!=', '===', '!==', '>', '>=', '<', '<='].includes(operator)
+}
+
+function isLogicalOperator(operator: string): boolean {
+  return operator === '||' || operator === '&&'
 }
