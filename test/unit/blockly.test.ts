@@ -101,9 +101,9 @@ describe('Blockly variadic function blocks', () => {
     expect(serializeProgram(workspaceToProgram(workspace))).toBe('"Line\\nTwo"')
   })
 
-  it('serializes rectangular if statement blocks as ternaries', () => {
+  it('serializes rectangular if statement blocks as real control flow', () => {
     const workspace = new Blockly.Workspace()
-    const ifBlock = workspace.newBlock('companion_if_statement')
+    const ifBlock = workspace.newBlock('companion_if_control')
     const condition = workspace.newBlock('companion_boolean')
     const trueResult = workspace.newBlock('companion_statement')
     const falseResult = workspace.newBlock('companion_statement')
@@ -115,8 +115,8 @@ describe('Blockly variadic function blocks', () => {
     whenFalse.setFieldValue('Off', 'VALUE')
 
     const conditionConnection = ifBlock.getInput('CONDITION')?.connection
-    const trueBranchConnection = ifBlock.getInput('TRUE')?.connection
-    const falseBranchConnection = ifBlock.getInput('FALSE')?.connection
+    const trueBranchConnection = ifBlock.getInput('THEN')?.connection
+    const falseBranchConnection = ifBlock.getInput('ELSE')?.connection
     const trueValueConnection = trueResult.getInput('VALUE')?.connection
     const falseValueConnection = falseResult.getInput('VALUE')?.connection
 
@@ -141,7 +141,7 @@ describe('Blockly variadic function blocks', () => {
     trueValueConnection.connect(whenTrue.outputConnection)
     falseValueConnection.connect(whenFalse.outputConnection)
 
-    expect(serializeProgram(workspaceToProgram(workspace))).toBe('true ? "On" : "Off"')
+    expect(serializeProgram(workspaceToProgram(workspace))).toBe('if (true) { "On"; } else { "Off"; }')
   })
 
   it('serializes local assignment and reference blocks', () => {
@@ -205,6 +205,50 @@ describe('Blockly variadic function blocks', () => {
 
     expect(serializeProgram(workspaceToProgram(workspace))).toBe('split($(custom:csv), ",")[2]')
   })
+
+  it('serializes Companion 5.0 for-of and if control statements', () => {
+    const workspace = new Blockly.Workspace()
+    const loop = workspace.newBlock('companion_for_of_control')
+    const iterable = workspace.newBlock('companion_variable')
+    const ifBlock = workspace.newBlock('companion_if_control')
+    const condition = workspace.newBlock('companion_boolean')
+    const assignment = workspace.newBlock('companion_assignment')
+    const item = workspace.newBlock('companion_local_reference')
+
+    loop.setFieldValue('let', 'KIND')
+    loop.setFieldValue('item', 'NAME')
+    iterable.setFieldValue('custom:items', 'NAME')
+    condition.setFieldValue('true', 'VALUE')
+    assignment.setFieldValue('selected', 'NAME')
+    item.setFieldValue('item', 'NAME')
+    loop.getInput('ITERABLE')?.connection?.connect(iterable.outputConnection!)
+    loop.getInput('BODY')?.connection?.connect(ifBlock.previousConnection!)
+    ifBlock.getInput('CONDITION')?.connection?.connect(condition.outputConnection!)
+    ifBlock.getInput('THEN')?.connection?.connect(assignment.previousConnection!)
+    assignment.getInput('VALUE')?.connection?.connect(item.outputConnection!)
+
+    expect(serializeProgram(workspaceToProgram(workspace))).toBe('for (let item of $(custom:items)) { if (true) { selected = item; } }')
+  })
+
+  it('serializes arrow callbacks as collection helper arguments', () => {
+    const workspace = new Blockly.Workspace()
+    const statement = workspace.newBlock('companion_statement')
+    const map = workspace.newBlock(functionBlockType('arrayMap'))
+    const values = workspace.newBlock('companion_variable')
+    const callback = workspace.newBlock('companion_arrow_expression')
+    const item = workspace.newBlock('companion_local_reference')
+
+    values.setFieldValue('custom:values', 'NAME')
+    callback.setFieldValue('item', 'PARAMS')
+    item.setFieldValue('item', 'NAME')
+    statement.getInput('VALUE')?.connection?.connect(map.outputConnection!)
+    map.getInput('ARG0')?.connection?.connect(values.outputConnection!)
+    map.getInput('ARG1')?.connection?.connect(callback.outputConnection!)
+    callback.getInput('VALUE')?.connection?.connect(item.outputConnection!)
+
+    expect(serializeProgram(workspaceToProgram(workspace))).toBe('arrayMap($(custom:values), item => item)')
+  })
+
 
   it('warns when comparing against logical string choices', () => {
     const workspace = new Blockly.Workspace()

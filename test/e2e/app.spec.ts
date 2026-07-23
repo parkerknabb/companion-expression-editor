@@ -89,7 +89,7 @@ test('imports variadic function calls', async ({ page }) => {
   await expect(output).toHaveValue(formattedExpression)
 })
 
-test('imports nested variables as native variables and serializes parseVariables automatically', async ({ page }) => {
+test('requires parseVariables for nested variables', async ({ page }) => {
   await page.goto('/')
 
   const output = page.getByRole('textbox', { name: 'Expression' })
@@ -97,8 +97,8 @@ test('imports nested variables as native variables and serializes parseVariables
   await output.fill('$(custom:$(custom:b))')
   await page.getByRole('button', { name: 'Import' }).click()
 
-  await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
-  await expect(output).toHaveValue('parseVariables("$(custom:$(custom:b))")')
+  await expect(page.locator('#statusMessage')).toContainText('Nested variable references must use parseVariables')
+  await expect(output).toHaveValue('$(custom:$(custom:b))')
 })
 
 test('imports template strings and local assignments', async ({ page }) => {
@@ -124,6 +124,21 @@ test('imports json helpers and split index access', async ({ page }) => {
 
   await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
   await expect(output).toHaveValue(expression)
+})
+
+test('imports Companion 5.0 control flow as Blockly statements', async ({ page }) => {
+  await page.goto('/')
+
+  const output = page.getByRole('textbox', { name: 'Expression' })
+  const expression = 'let total = 0;\nfor (let item of $(custom:items)) {\n  if (item?.enabled ?? false) {\n    total = total + 1;\n  }\n}\ntotal'
+
+  await output.fill(expression)
+  await page.getByRole('button', { name: 'Import' }).click()
+
+  await expect(page.locator('#statusMessage')).toHaveText('Imported expression.')
+  await expect(page.getByText('for each')).toBeVisible()
+  await expect(output).toHaveValue(/for \(let item of \$\(custom:items\)\)/)
+  await expect(output).toHaveValue(/item\?\.enabled \?\? false/)
 })
 
 test('shows escaped control characters in imported text blocks', async ({ page }) => {

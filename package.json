@@ -11,8 +11,8 @@
     "test:browser": "playwright test"
   },
   "dependencies": {
-    "blockly": "^13.1.0",
-    "jsep": "^1.4.0"
+    "acorn": "^8.17.0",
+    "blockly": "^13.1.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",

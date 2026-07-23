@@ -48,16 +48,14 @@ describe('expression parsing and serialization', () => {
     expect(serializeProgram(program)).toBe('$(atem:pgm1_input) == "CAM 1" || $(atem:pgm1_input) == "Black"')
   })
 
-  it('serializes nested variable references with parseVariables automatically', () => {
-    const program = parseExpressionProgram('$(custom:$(custom:b))')
-
-    expect(serializeProgram(program)).toBe('parseVariables("$(custom:$(custom:b))")')
+  it('requires parseVariables for nested variable references', () => {
+    expect(() => parseExpressionProgram('$(custom:$(custom:b))')).toThrow('Nested variable references must use parseVariables')
   })
 
-  it('imports parseVariables around a single variable reference as a native variable', () => {
+  it('imports parseVariables as a normal Companion function', () => {
     const program = parseExpressionProgram('parseVariables("$(custom:$(custom:b))")')
 
-    expect(program.statements[0]).toEqual({ type: 'Variable', name: 'custom:$(custom:b)' })
+    expect(program.statements[0]).toEqual({ type: 'FunctionCall', name: 'parseVariables', args: [{ type: 'Literal', value: '$(custom:$(custom:b))' }] })
     expect(serializeProgram(program)).toBe('parseVariables("$(custom:$(custom:b))")')
   })
 
@@ -171,5 +169,38 @@ describe('expression parsing and serialization', () => {
         '  )',
       ].join('\n'),
     )
+  })
+
+  it('imports Companion 5.0 control flow, closures, and collection helpers', () => {
+    const program = parseExpressionProgram(`
+      let total = 0
+      for (let value of arrayMap(split($(custom:csv), ","), item => item)) {
+        if (value?.length ?? 0) total = total + 1
+      }
+      total
+    `)
+
+    expect(program.statements.map((statement) => statement.type)).toEqual(['Declaration', 'ForOfStatement', 'LocalReference'])
+    expect(serializeProgram(program)).toContain('arrayMap(split($(custom:csv), ","), item => item)')
+    expect(serializeProgram(program)).toContain('value?.length ?? 0')
+  })
+
+  it('imports array, object, spread, and update syntax', () => {
+    const program = parseExpressionProgram('let items = [...split("a,b", ","), "c"];\nlet options = { enabled: true, ...$(custom:options) };\nitems[0]')
+
+    expect(serializeProgram(program)).toContain('let items = [...split("a,b", ","), "c"];')
+    expect(serializeProgram(program)).toContain('let options = { enabled: true, ...$(custom:options) };')
+  })
+
+  it('supports documented named arrow functions and property assignment', () => {
+    const program = parseExpressionProgram('const double = x => x * 2;\nlet counts = { high: 0 };\ncounts.high = double(21);\ncounts.high')
+
+    expect(serializeProgram(program)).toBe('const double = x => x * 2;\nlet counts = { high: 0 };\ncounts.high = double(21);\ncounts.high')
+  })
+
+  it('supports the current beta helper catalog additions', () => {
+    const program = parseExpressionProgram('dateFormat(dateAdd(unixNow(), 1, "days"), "YYYY-MM-DD");\narraySort(arrayConcat([3], arraySlice([2, 1], 0)), (a, b) => stringCompare(a, b))')
+
+    expect(serializeProgram(program)).toContain('stringCompare(a, b)')
   })
 })

@@ -16,6 +16,9 @@ The app is standalone and client-side only. It does not connect to Companion or 
   - literals, ternaries, unary operators, and binary operators
   - functions such as `concat`, `toFixed`, `min`, `max`, `round`, `trim`, `includes`, `getVariable`, `bool`, and time helpers
   - variadic `concat`, `min`, and `max` blocks that grow as inputs are filled
+  - Companion 5.0 collection helpers: `arrayMap`, `arrayFilter`, `arrayReduce`, `arrayForEach`, `arrayFind`, `arrayFindIndex`, `arraySome`, `arrayEvery`, `arraySort`, `arrayReverse`, `objectKeys`, and `objectValues`
+  - native Blockly blocks for Companion 5.0 `let`/`const`, `if`/`else`, `while`, counting `for`, `for…of`, `return`, `break`, `continue`, arrow callbacks, and optional property access
+  - strict visual import: constructs without a dedicated block are rejected instead of being hidden in a raw-code fallback
 
 ## Local Development
 
